@@ -1,0 +1,27 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-molt-deeper text-white antialiased;
+  }
+}
+
+@layer utilities {
+  .text-gradient {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-molt-cyan via-molt-purple to-molt-red;
+  }
+  .text-gradient-warm {
+    @apply bg-clip-text text-transparent bg-gradient-to-r from-molt-orange via-molt-red to-molt-purple;
+  }
+  .border-gradient {
+    border-image: linear-gradient(135deg, #00f5d4, #7b2ff7, #e63946) 1;
+  }
+  .glow-cyan {
+    box-shadow: 0 0 40px rgba(0, 245, 212, 0.15), 0 0 80px rgba(0, 245, 212, 0.05);
+  }
+  .glow-red {
+    box-shadow: 0 0 40px rgba(230, 57, 70, 0.2), 0 0 80px rgba(230, 57, 70, 0.05);
+  }
+}
