@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
+import { requireAdminAuth } from '@/lib/api/admin-auth';
 
 export async function POST(request: NextRequest) {
+  const authError = requireAdminAuth(request);
+  if (authError) return authError;
+
   const body = await request.json();
   const { enabled } = body;
 

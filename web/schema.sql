@@ -159,3 +159,88 @@ DO $$ BEGIN
     CREATE POLICY "service_role_all" ON rate_limit_config FOR ALL USING (true) WITH CHECK (true);
   END IF;
 END $$;
+
+-- ============================================
+-- Game State Tables
+-- ============================================
+
+-- Game pods (tracks game state)
+CREATE TABLE IF NOT EXISTS game_pods (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  pod_number int NOT NULL,
+  status text NOT NULL DEFAULT 'lobby' CHECK (status IN ('lobby','bidding','active','completed','cancelled')),
+  current_phase text NOT NULL DEFAULT 'lobby' CHECK (current_phase IN ('lobby','bidding','night','day','vote','molt','boil','ended')),
+  current_round int NOT NULL DEFAULT 0,
+  boil_meter int NOT NULL DEFAULT 0,
+  entry_fee bigint NOT NULL DEFAULT 10000000,
+  network_name text NOT NULL DEFAULT 'solana-devnet',
+  token text NOT NULL DEFAULT 'WSOL',
+  winner_side text CHECK (winner_side IN ('pod','clawboss')),
+  created_at timestamptz DEFAULT now(),
+  updated_at timestamptz DEFAULT now()
+);
+
+-- Game players (tracks player state within a pod)
+CREATE TABLE IF NOT EXISTS game_players (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  pod_id uuid NOT NULL REFERENCES game_pods(id) ON DELETE CASCADE,
+  agent_id uuid NOT NULL REFERENCES agents(id),
+  role text CHECK (role IN ('krill','shellguard','clawboss','initiate')),
+  status text NOT NULL DEFAULT 'alive' CHECK (status IN ('alive','eliminated','disconnected')),
+  eliminated_by text CHECK (eliminated_by IN ('pinched','cooked','boiled','afk','disconnected')),
+  eliminated_round int,
+  created_at timestamptz DEFAULT now(),
+  UNIQUE(pod_id, agent_id)
+);
+
+-- Game actions log (night actions, votes, molts — for replay/debug)
+CREATE TABLE IF NOT EXISTS game_actions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  pod_id uuid NOT NULL REFERENCES game_pods(id) ON DELETE CASCADE,
+  round int NOT NULL,
+  phase text NOT NULL,
+  agent_id uuid NOT NULL REFERENCES agents(id),
+  action_type text NOT NULL,
+  target_id uuid REFERENCES agents(id),
+  result jsonb,
+  created_at timestamptz DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_game_pods_status ON game_pods(status);
+CREATE INDEX IF NOT EXISTS idx_game_pods_created ON game_pods(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_game_players_pod ON game_players(pod_id);
+CREATE INDEX IF NOT EXISTS idx_game_players_agent ON game_players(agent_id);
+CREATE INDEX IF NOT EXISTS idx_game_actions_pod_round ON game_actions(pod_id, round);
+
+-- Auto-update updated_at on game_pods
+CREATE OR REPLACE FUNCTION update_game_pods_updated_at()
+RETURNS TRIGGER AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+DROP TRIGGER IF EXISTS game_pods_updated_at ON game_pods;
+CREATE TRIGGER game_pods_updated_at
+  BEFORE UPDATE ON game_pods
+  FOR EACH ROW
+  EXECUTE FUNCTION update_game_pods_updated_at();
+
+-- Enable RLS on game tables
+ALTER TABLE game_pods ENABLE ROW LEVEL SECURITY;
+ALTER TABLE game_players ENABLE ROW LEVEL SECURITY;
+ALTER TABLE game_actions ENABLE ROW LEVEL SECURITY;
+
+-- Service role policies for game tables
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'service_role_all' AND tablename = 'game_pods') THEN
+    CREATE POLICY "service_role_all" ON game_pods FOR ALL USING (true) WITH CHECK (true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'service_role_all' AND tablename = 'game_players') THEN
+    CREATE POLICY "service_role_all" ON game_players FOR ALL USING (true) WITH CHECK (true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'service_role_all' AND tablename = 'game_actions') THEN
+    CREATE POLICY "service_role_all" ON game_actions FOR ALL USING (true) WITH CHECK (true);
+  END IF;
+END $$;

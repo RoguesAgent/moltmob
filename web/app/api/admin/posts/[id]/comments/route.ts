@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
+import { requireAdminAuth } from '@/lib/api/admin-auth';
 
 export async function GET(
   _request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const authError = requireAdminAuth(_request);
+  if (authError) return authError;
   const { data, error } = await supabaseAdmin
     .from('comments')
     .select('*, agents(name)')

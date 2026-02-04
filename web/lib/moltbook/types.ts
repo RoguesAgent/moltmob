@@ -141,3 +141,89 @@ export const CONTENT_LIMITS = {
   post_content_max: 10_000,
   comment_content_max: 5_000,
 };
+
+// ── Game State Types ──
+
+export type GamePodStatus = 'lobby' | 'bidding' | 'active' | 'completed' | 'cancelled';
+export type GamePhase = 'lobby' | 'bidding' | 'night' | 'day' | 'vote' | 'molt' | 'boil' | 'ended';
+export type GamePlayerRole = 'krill' | 'shellguard' | 'clawboss' | 'initiate';
+export type GamePlayerStatus = 'alive' | 'eliminated' | 'disconnected';
+export type EliminatedBy = 'pinched' | 'cooked' | 'boiled' | 'afk' | 'disconnected';
+export type GameActionType = 'pinch' | 'protect' | 'dummy' | 'cook' | 'no_lynch' | 'abstain' | 'molt';
+
+export interface GamePod {
+  id: string;
+  pod_number: number;
+  status: GamePodStatus;
+  current_phase: GamePhase;
+  current_round: number;
+  boil_meter: number;
+  entry_fee: number;
+  network_name: string;
+  token: string;
+  winner_side: 'pod' | 'clawboss' | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GamePlayer {
+  id: string;
+  pod_id: string;
+  agent_id: string;
+  role: GamePlayerRole | null;
+  status: GamePlayerStatus;
+  eliminated_by: EliminatedBy | null;
+  eliminated_round: number | null;
+  created_at: string;
+}
+
+export interface GameAction {
+  id: string;
+  pod_id: string;
+  round: number;
+  phase: string;
+  agent_id: string;
+  action_type: GameActionType;
+  target_id: string | null;
+  result: unknown;
+  created_at: string;
+}
+
+export interface GamePlayerWithAgent extends GamePlayer {
+  agent: {
+    id: string;
+    name: string;
+  };
+}
+
+export interface GamePodWithPlayers extends GamePod {
+  players: GamePlayerWithAgent[];
+  player_count: number;
+}
+
+// ── Sync API Types ──
+
+export interface SyncPostsRequest {
+  posts: MoltbookPost[];
+}
+
+export interface SyncCommentsRequest {
+  comments: MoltbookComment[];
+}
+
+export interface SyncGameStateRequest {
+  pod: Omit<GamePod, 'id' | 'created_at' | 'updated_at'> & { id?: string };
+  players: (Omit<GamePlayer, 'id' | 'created_at'> & { id?: string })[];
+  actions: (Omit<GameAction, 'id' | 'created_at'> & { id?: string })[];
+}
+
+export interface SyncResponse {
+  success: boolean;
+  synced: number;
+  errors: string[];
+}
+
+export interface SyncGameStateResponse {
+  success: boolean;
+  pod_id: string;
+}

@@ -1,7 +1,10 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
+import { requireAdminAuth } from '@/lib/api/admin-auth';
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const authError = requireAdminAuth(req);
+  if (authError) return authError;
   try {
     const [agentsRes, postsRes, commentsRes] = await Promise.all([
       supabaseAdmin.from('agents').select('id', { count: 'exact', head: true }),

@@ -1,7 +1,10 @@
-import { NextResponse } from 'next/server';
+import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
+import { requireAdminAuth } from '@/lib/api/admin-auth';
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const authError = requireAdminAuth(req);
+  if (authError) return authError;
   // Get recent rate limit entries (last hour) grouped by agent and endpoint
   const oneHourAgo = new Date(Date.now() - 3600000).toISOString();
 

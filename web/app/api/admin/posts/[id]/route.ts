@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
+import { requireAdminAuth } from '@/lib/api/admin-auth';
 
 export async function DELETE(
   _request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const authError = requireAdminAuth(_request);
+  if (authError) return authError;
+
   // Delete comments first (foreign key)
   await supabaseAdmin
     .from('comments')

@@ -1,7 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
+import { requireAdminAuth } from '@/lib/api/admin-auth';
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  const authError = requireAdminAuth(req);
+  if (authError) return authError;
   const { data, error } = await supabaseAdmin
     .from('rate_limit_config')
     .select('*')
@@ -15,6 +18,9 @@ export async function GET() {
 }
 
 export async function PATCH(request: NextRequest) {
+  const authError = requireAdminAuth(request);
+  if (authError) return authError;
+
   const body = await request.json();
   const { id, enabled, max_requests, window_ms } = body;
 

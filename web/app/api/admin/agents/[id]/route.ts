@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
+import { requireAdminAuth } from '@/lib/api/admin-auth';
 
 export async function PATCH(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const authError = requireAdminAuth(request);
+  if (authError) return authError;
+
   const body = await request.json();
   const { balance } = body;
 
@@ -30,6 +34,9 @@ export async function DELETE(
   _request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const authError = requireAdminAuth(_request);
+  if (authError) return authError;
+
   const { error } = await supabaseAdmin
     .from('agents')
     .delete()
