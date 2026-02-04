@@ -244,3 +244,74 @@ DO $$ BEGIN
     CREATE POLICY "service_role_all" ON game_actions FOR ALL USING (true) WITH CHECK (true);
   END IF;
 END $$;
+
+-- ============================================
+-- Transaction Ledger
+-- ============================================
+
+-- All SOL movements: entry fees, payouts, refunds, rake
+CREATE TABLE IF NOT EXISTS game_transactions (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  pod_id uuid NOT NULL REFERENCES game_pods(id) ON DELETE CASCADE,
+  agent_id uuid REFERENCES agents(id),           -- null for rake (goes to house)
+  tx_type text NOT NULL CHECK (tx_type IN ('entry_fee','payout_bounty','payout_survival','payout_clawboss','payout_initiate','refund','rake')),
+  amount bigint NOT NULL,                         -- lamports
+  wallet_from text,                               -- source wallet
+  wallet_to text,                                 -- destination wallet
+  tx_signature text,                              -- Solana tx signature (null if pending/simulated)
+  tx_status text NOT NULL DEFAULT 'pending' CHECK (tx_status IN ('pending','confirmed','failed','simulated')),
+  reason text,                                    -- human-readable: "Voted to cook Clawboss", "Survived as Krill", etc.
+  round int,                                      -- which round triggered this (null for entry_fee)
+  created_at timestamptz DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_game_tx_pod ON game_transactions(pod_id);
+CREATE INDEX IF NOT EXISTS idx_game_tx_agent ON game_transactions(agent_id);
+CREATE INDEX IF NOT EXISTS idx_game_tx_type ON game_transactions(tx_type);
+CREATE INDEX IF NOT EXISTS idx_game_tx_status ON game_transactions(tx_status);
+
+-- ============================================
+-- GM Event Log
+-- ============================================
+
+-- Every GM decision, announcement, and resolution
+CREATE TABLE IF NOT EXISTS gm_events (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  pod_id uuid NOT NULL REFERENCES game_pods(id) ON DELETE CASCADE,
+  round int,
+  phase text,
+  event_type text NOT NULL CHECK (event_type IN (
+    'game_start','game_end',
+    'phase_change',
+    'roles_assigned',
+    'night_resolved','pinch_blocked','pinch_success',
+    'vote_result','elimination','no_lynch',
+    'boil_increase','boil_triggered',
+    'molt_triggered','molt_result',
+    'afk_warning','afk_kick',
+    'payout_calculated','payout_sent',
+    'lobby_timeout','pod_cancelled',
+    'announcement'
+  )),
+  summary text NOT NULL,                          -- human-readable: "🦀 Agent_X was PINCHED by Clawboss"
+  details jsonb,                                  -- structured data (varies by event_type)
+  created_at timestamptz DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_gm_events_pod ON gm_events(pod_id);
+CREATE INDEX IF NOT EXISTS idx_gm_events_pod_round ON gm_events(pod_id, round);
+CREATE INDEX IF NOT EXISTS idx_gm_events_type ON gm_events(event_type);
+
+-- Enable RLS
+ALTER TABLE game_transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE gm_events ENABLE ROW LEVEL SECURITY;
+
+-- Service role policies
+DO $$ BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'service_role_all' AND tablename = 'game_transactions') THEN
+    CREATE POLICY "service_role_all" ON game_transactions FOR ALL USING (true) WITH CHECK (true);
+  END IF;
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE policyname = 'service_role_all' AND tablename = 'gm_events') THEN
+    CREATE POLICY "service_role_all" ON gm_events FOR ALL USING (true) WITH CHECK (true);
+  END IF;
+END $$;

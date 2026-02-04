@@ -115,11 +115,65 @@ export async function POST(req: NextRequest) {
       }
     }
 
+    // Insert transactions
+    let txSynced = 0;
+    if (Array.isArray(body.transactions)) {
+      for (const tx of body.transactions) {
+        let agentId = tx.agent_id || null;
+        if (!agentId && tx.agent_name) {
+          const { data: agent } = await supabaseAdmin
+            .from('agents')
+            .select('id')
+            .eq('name', tx.agent_name)
+            .single();
+          agentId = agent?.id || null;
+        }
+
+        const { error } = await supabaseAdmin
+          .from('game_transactions')
+          .insert({
+            pod_id: pod.id,
+            agent_id: agentId,
+            tx_type: tx.tx_type,
+            amount: tx.amount,
+            wallet_from: tx.wallet_from || null,
+            wallet_to: tx.wallet_to || null,
+            tx_signature: tx.tx_signature || null,
+            tx_status: tx.tx_status ?? 'pending',
+            reason: tx.reason || null,
+            round: tx.round ?? null,
+          });
+
+        if (!error) txSynced++;
+      }
+    }
+
+    // Insert GM events
+    let eventsSynced = 0;
+    if (Array.isArray(body.events)) {
+      for (const event of body.events) {
+        const { error } = await supabaseAdmin
+          .from('gm_events')
+          .insert({
+            pod_id: pod.id,
+            round: event.round ?? null,
+            phase: event.phase || null,
+            event_type: event.event_type,
+            summary: event.summary,
+            details: event.details || null,
+          });
+
+        if (!error) eventsSynced++;
+      }
+    }
+
     return NextResponse.json({
       success: true,
       pod_id: pod.id,
       players_synced: playersSynced,
       actions_synced: actionsSynced,
+      transactions_synced: txSynced,
+      events_synced: eventsSynced,
     });
   } catch {
     return errorResponse('Invalid request body', 400);
