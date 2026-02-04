@@ -53,12 +53,19 @@ export interface Pod {
   lobby_deadline: number; // unix ms — lobby closes at this time
 }
 
+export type TokenSymbol = 'WSOL';
+export type NetworkName = 'solana-devnet' | 'solana-mainnet';
+
+export const BASE_URL = 'https://moltmob.com';
+
 export interface PodConfig {
   test_mode: boolean;
   mock_moltbook: boolean;
   max_rounds: number; // default 10
   rake_percent: number; // default 10
   lobby_timeout_ms: number; // default 300_000 (5 min)
+  token: TokenSymbol; // default 'WSOL'
+  network_name: NetworkName; // default 'solana-devnet'
 }
 
 export interface CancellationResult {

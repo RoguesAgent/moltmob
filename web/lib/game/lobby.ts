@@ -9,6 +9,7 @@ import {
   CancellationResult,
   MIN_PLAYERS,
   MAX_PLAYERS,
+  BASE_URL,
 } from './types';
 
 const DEFAULT_ENTRY_FEE = 10_000_000; // 0.01 SOL in lamports
@@ -46,6 +47,8 @@ export function createPod(params: {
       max_rounds: params.config?.max_rounds ?? 10,
       rake_percent: params.config?.rake_percent ?? 10,
       lobby_timeout_ms: lobbyTimeout,
+      token: params.config?.token ?? 'WSOL',
+      network_name: params.config?.network_name ?? 'solana-devnet',
     },
     lobby_deadline: now + lobbyTimeout,
   };
