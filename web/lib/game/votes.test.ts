@@ -8,28 +8,28 @@ describe('Vote Tallying (6 players)', () => {
   it('T-VOTE-001: clear majority eliminates target', () => {
     const result = tallyVotes(
       [
-        { voter_id: pid(0), target_id: pid(4) },
-        { voter_id: pid(1), target_id: pid(4) },
-        { voter_id: pid(2), target_id: pid(4) },
-        { voter_id: pid(3), target_id: pid(5) },
-        { voter_id: pid(5), target_id: pid(3) },
+        { voter_id: pid(0), target_id: pid(5) },
+        { voter_id: pid(1), target_id: pid(5) },
+        { voter_id: pid(2), target_id: pid(5) },
+        { voter_id: pid(3), target_id: pid(4) },
+        { voter_id: pid(4), target_id: pid(3) },
       ],
       6,
       1
     );
-    expect(result.eliminated).toBe(pid(4));
+    expect(result.eliminated).toBe(pid(5));
     expect(result.no_lynch).toBe(false);
     expect(result.boil_increase).toBe(0);
-    expect(result.tally[pid(4)]).toHaveLength(3);
+    expect(result.tally[pid(5)]).toHaveLength(3);
   });
 
   it('T-VOTE-002: tie = no-lynch', () => {
     const result = tallyVotes(
       [
-        { voter_id: pid(0), target_id: pid(4) },
-        { voter_id: pid(1), target_id: pid(4) },
-        { voter_id: pid(2), target_id: pid(5) },
-        { voter_id: pid(3), target_id: pid(5) },
+        { voter_id: pid(0), target_id: pid(5) },
+        { voter_id: pid(1), target_id: pid(5) },
+        { voter_id: pid(2), target_id: pid(4) },
+        { voter_id: pid(3), target_id: pid(4) },
         { voter_id: pid(4), target_id: pid(0) },
         { voter_id: pid(5), target_id: pid(0) },
       ],
@@ -44,11 +44,11 @@ describe('Vote Tallying (6 players)', () => {
   it('T-VOTE-003: single vote below threshold = no-lynch', () => {
     const result = tallyVotes(
       [
-        { voter_id: pid(0), target_id: pid(4) },
+        { voter_id: pid(0), target_id: pid(5) },
         { voter_id: pid(1), target_id: null }, // abstain
         { voter_id: pid(2), target_id: null },
         { voter_id: pid(3), target_id: null },
-        { voter_id: pid(5), target_id: null },
+        { voter_id: pid(4), target_id: null },
       ],
       6,
       1
@@ -84,10 +84,10 @@ describe('Vote Tallying (6 players)', () => {
   it('T-VOTE-006: boil scales by round (round 3 = +25%)', () => {
     const result = tallyVotes(
       [
-        { voter_id: pid(0), target_id: pid(4) },
-        { voter_id: pid(1), target_id: pid(4) },
-        { voter_id: pid(2), target_id: pid(5) },
-        { voter_id: pid(3), target_id: pid(5) },
+        { voter_id: pid(0), target_id: pid(5) },
+        { voter_id: pid(1), target_id: pid(5) },
+        { voter_id: pid(2), target_id: pid(4) },
+        { voter_id: pid(3), target_id: pid(4) },
       ],
       6,
       3
@@ -99,8 +99,8 @@ describe('Vote Tallying (6 players)', () => {
   it('T-VOTE-007: boil scales by round (round 7 = +40%)', () => {
     const result = tallyVotes(
       [
-        { voter_id: pid(0), target_id: pid(4) },
-        { voter_id: pid(1), target_id: pid(5) },
+        { voter_id: pid(0), target_id: pid(5) },
+        { voter_id: pid(1), target_id: pid(4) },
       ],
       6,
       7
@@ -113,8 +113,8 @@ describe('Vote Tallying (6 players)', () => {
     // 2 out of 6 vote (33%), tie → no-lynch
     const result = tallyVotes(
       [
-        { voter_id: pid(0), target_id: pid(4) },
-        { voter_id: pid(1), target_id: pid(5) },
+        { voter_id: pid(0), target_id: pid(5) },
+        { voter_id: pid(1), target_id: pid(4) },
       ],
       6,
       1
@@ -126,13 +126,13 @@ describe('Vote Tallying (6 players)', () => {
   it('T-VOTE-009: exactly 2 votes on same target = eliminates', () => {
     const result = tallyVotes(
       [
-        { voter_id: pid(0), target_id: pid(4) },
-        { voter_id: pid(1), target_id: pid(4) },
+        { voter_id: pid(0), target_id: pid(5) },
+        { voter_id: pid(1), target_id: pid(5) },
       ],
       6,
       1
     );
-    expect(result.eliminated).toBe(pid(4));
+    expect(result.eliminated).toBe(pid(5));
     expect(result.no_lynch).toBe(false);
     expect(result.boil_increase).toBe(0);
   });
@@ -140,16 +140,16 @@ describe('Vote Tallying (6 players)', () => {
   it('T-VOTE-010: abstains not counted in tally', () => {
     const result = tallyVotes(
       [
-        { voter_id: pid(0), target_id: pid(4) },
-        { voter_id: pid(1), target_id: pid(4) },
-        { voter_id: pid(2), target_id: pid(4) },
+        { voter_id: pid(0), target_id: pid(5) },
+        { voter_id: pid(1), target_id: pid(5) },
+        { voter_id: pid(2), target_id: pid(5) },
         { voter_id: pid(3), target_id: null }, // abstain
-        { voter_id: pid(5), target_id: null }, // abstain
+        { voter_id: pid(4), target_id: null }, // abstain
       ],
       6,
       1
     );
-    expect(result.eliminated).toBe(pid(4));
-    expect(Object.keys(result.tally)).toEqual([pid(4)]);
+    expect(result.eliminated).toBe(pid(5));
+    expect(Object.keys(result.tally)).toEqual([pid(5)]);
   });
 });

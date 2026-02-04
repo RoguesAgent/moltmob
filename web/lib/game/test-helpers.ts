@@ -1,5 +1,13 @@
 // ── Test Helpers: Mock Players ──
 // All tests use 6+ players with full mock data
+//
+// Default role layouts per count:
+//   6:  5K + 1CB (no Initiate)
+//   7:  5K + 1CB + 1Init
+//   8:  5K + 1SG + 1CB + 1Init
+//  10:  6K + 1SG + 2CB + 1Init (uses "high" variant: 2 CB)
+//  11:  7K + 1SG + 2CB + 1Init
+//  12:  6K + 2SG + 2CB + 2Init (uses "high" variant: 2 Init)
 
 import { Player, Role } from './types';
 
@@ -49,9 +57,40 @@ export function mockPlayers(count: number = 6, overrides?: Partial<Player>[]): P
   );
 }
 
+/** Default role layouts matching the distribution table */
+function getDefaultRoles(count: number): Role[] {
+  switch (count) {
+    case 6:
+      // 5 Krill + 1 Clawboss (NO Initiate)
+      return ['krill', 'krill', 'krill', 'krill', 'krill', 'clawboss'];
+    case 7:
+      // 5 Krill + 1 Clawboss + 1 Initiate
+      return ['krill', 'krill', 'krill', 'krill', 'krill', 'clawboss', 'initiate'];
+    case 8:
+      // 5 Krill + 1 Shellguard + 1 Clawboss + 1 Initiate
+      return ['krill', 'krill', 'krill', 'krill', 'krill', 'shellguard', 'clawboss', 'initiate'];
+    case 9:
+      // 6 Krill + 1 Shellguard + 1 Clawboss + 1 Initiate
+      return ['krill', 'krill', 'krill', 'krill', 'krill', 'krill', 'shellguard', 'clawboss', 'initiate'];
+    case 10:
+      // 6 Krill + 1 Shellguard + 2 Clawboss + 1 Initiate (high variant)
+      return ['krill', 'krill', 'krill', 'krill', 'krill', 'krill', 'shellguard', 'clawboss', 'clawboss', 'initiate'];
+    case 11:
+      // 7 Krill + 1 Shellguard + 2 Clawboss + 1 Initiate
+      return ['krill', 'krill', 'krill', 'krill', 'krill', 'krill', 'krill', 'shellguard', 'clawboss', 'clawboss', 'initiate'];
+    case 12:
+      // 6 Krill + 2 Shellguard + 2 Clawboss + 2 Initiate (high variant)
+      return ['krill', 'krill', 'krill', 'krill', 'krill', 'krill', 'shellguard', 'shellguard', 'clawboss', 'clawboss', 'initiate', 'initiate'];
+    default:
+      return Array(count).fill('krill');
+  }
+}
+
 /**
- * Create a full 6-player lineup with assigned roles.
- * Standard: 4 Krill + 1 Clawboss + 1 Initiate
+ * Create a full lineup with assigned roles.
+ *
+ * Default 6-player: 5 Krill + 1 Clawboss (no Initiate at 6).
+ * Clawboss is always at the end for easy reference.
  */
 export function mockRoledPlayers(overrides?: {
   count?: number;
@@ -60,15 +99,7 @@ export function mockRoledPlayers(overrides?: {
 }): Player[] {
   const count = overrides?.count ?? 6;
   const players = mockPlayers(count);
-
-  // Default role assignment for 6 players:
-  // [0] Krill, [1] Krill, [2] Krill, [3] Krill, [4] Clawboss, [5] Initiate
-  const defaultRoles: Role[] =
-    count === 6
-      ? ['krill', 'krill', 'krill', 'krill', 'clawboss', 'initiate']
-      : count === 8
-        ? ['krill', 'krill', 'krill', 'krill', 'krill', 'shellguard', 'clawboss', 'initiate']
-        : Array(count).fill('krill');
+  const defaultRoles = getDefaultRoles(count);
 
   // Apply default roles
   players.forEach((p, i) => {
@@ -103,4 +134,18 @@ export function mockRoledPlayers(overrides?: {
  */
 export function pid(index: number): string {
   return `agent_${index}`;
+}
+
+/**
+ * Find the first player with a given role.
+ */
+export function findByRole(players: Player[], role: Role): Player | undefined {
+  return players.find((p) => p.role === role);
+}
+
+/**
+ * Find all players with a given role.
+ */
+export function findAllByRole(players: Player[], role: Role): Player[] {
+  return players.filter((p) => p.role === role);
 }

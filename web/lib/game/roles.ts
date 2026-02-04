@@ -1,14 +1,29 @@
 // ── Role Assignment Engine ──
-// PRD §3.2: Distribution Table
-// Updated: Initiate only exists at 6+ players
+// PRD §3.2: Distribution Table (updated Feb 4)
+//
+// Players | Clawboss | Initiate | Shellguard | Krill
+// --------|----------|----------|------------|------
+//   6     |    1     |    0     |     0      |  5
+//   7     |    1     |    1     |     0      |  5
+//   8     |    1     |    1     |     1      |  5
+//   9     |    1     |    1     |     1      |  6
+//  10     |   1-2    |    1     |     1      | 5-6
+//  11     |    2     |    1     |     1      |  7
+//  12     |    2     |   1-2    |     2      | 6-7
 
 import { Role, RoleDistribution, MIN_PLAYERS, MAX_PLAYERS } from './types';
 
 /**
  * Get the role distribution for a given player count.
- * Always exactly 1 Clawboss, 1 Initiate (min 6 players guarantees this).
- * Shellguard at 8+ players (1-2 depending on count).
- * Remaining slots filled with Krill.
+ *
+ * Key rules:
+ * - 6 players: NO Initiate
+ * - 7+: 1 Initiate (except 12 can have 1-2)
+ * - 10: 1-2 Clawboss (random)
+ * - 11+: 2 Clawboss
+ * - 8+: 1 Shellguard (12: 2)
+ * - 12: 1-2 Initiate (random)
+ * - Remaining: Krill
  */
 export function getRoleDistribution(playerCount: number): RoleDistribution {
   if (playerCount < MIN_PLAYERS) {
@@ -21,29 +36,97 @@ export function getRoleDistribution(playerCount: number): RoleDistribution {
   const dist: RoleDistribution = {
     krill: 0,
     shellguard: 0,
-    clawboss: 1, // always exactly 1
+    clawboss: 1,
     initiate: 0,
   };
 
-  let remaining = playerCount - 1; // minus clawboss
+  let remaining = playerCount;
 
-  // Initiate only at 6+ players
-  if (playerCount >= 6) {
+  // ── Clawboss ──
+  if (playerCount >= 11) {
+    dist.clawboss = 2;
+  } else if (playerCount === 10) {
+    // 10 players: randomly 1 or 2 Clawboss
+    dist.clawboss = Math.random() < 0.5 ? 1 : 2;
+  } else {
+    dist.clawboss = 1;
+  }
+  remaining -= dist.clawboss;
+
+  // ── Initiate ──
+  if (playerCount === 6) {
+    dist.initiate = 0; // no Initiate at 6
+  } else if (playerCount === 12) {
+    // 12 players: randomly 1 or 2 Initiate
+    dist.initiate = Math.random() < 0.5 ? 1 : 2;
+  } else if (playerCount >= 7) {
     dist.initiate = 1;
-    remaining -= 1;
   }
+  remaining -= dist.initiate;
 
-  // Shellguard distribution
-  if (playerCount >= 8) {
-    dist.shellguard = 1;
-    remaining -= 1;
-  }
+  // ── Shellguard ──
   if (playerCount >= 12) {
     dist.shellguard = 2;
-    remaining -= 1; // already subtracted 1 above, so subtract 1 more
+  } else if (playerCount >= 8) {
+    dist.shellguard = 1;
+  }
+  remaining -= dist.shellguard;
+
+  // ── Krill (everything else) ──
+  dist.krill = remaining;
+
+  return dist;
+}
+
+/**
+ * Deterministic version for testing — takes a seed to control random outcomes.
+ * seed < 0.5 → lower option, seed >= 0.5 → higher option
+ */
+export function getRoleDistributionSeeded(playerCount: number, seed: number): RoleDistribution {
+  if (playerCount < MIN_PLAYERS) {
+    throw new Error(`Cannot create game with fewer than ${MIN_PLAYERS} players (got ${playerCount})`);
+  }
+  if (playerCount > MAX_PLAYERS) {
+    throw new Error(`Cannot create game with more than ${MAX_PLAYERS} players (got ${playerCount})`);
   }
 
-  // All remaining are Krill
+  const dist: RoleDistribution = {
+    krill: 0,
+    shellguard: 0,
+    clawboss: 1,
+    initiate: 0,
+  };
+
+  let remaining = playerCount;
+
+  // ── Clawboss ──
+  if (playerCount >= 11) {
+    dist.clawboss = 2;
+  } else if (playerCount === 10) {
+    dist.clawboss = seed < 0.5 ? 1 : 2;
+  } else {
+    dist.clawboss = 1;
+  }
+  remaining -= dist.clawboss;
+
+  // ── Initiate ──
+  if (playerCount === 6) {
+    dist.initiate = 0;
+  } else if (playerCount === 12) {
+    dist.initiate = seed < 0.5 ? 1 : 2;
+  } else if (playerCount >= 7) {
+    dist.initiate = 1;
+  }
+  remaining -= dist.initiate;
+
+  // ── Shellguard ──
+  if (playerCount >= 12) {
+    dist.shellguard = 2;
+  } else if (playerCount >= 8) {
+    dist.shellguard = 1;
+  }
+  remaining -= dist.shellguard;
+
   dist.krill = remaining;
 
   return dist;
@@ -86,7 +169,7 @@ export function assignRoles(playerIds: string[]): Map<string, Role> {
 }
 
 /**
- * Validate a role distribution is legal.
+ * Validate a role distribution is legal for its player count.
  */
 export function validateDistribution(dist: RoleDistribution, playerCount: number): string[] {
   const errors: string[] = [];
@@ -95,15 +178,32 @@ export function validateDistribution(dist: RoleDistribution, playerCount: number
   if (total !== playerCount) {
     errors.push(`Total roles (${total}) doesn't match player count (${playerCount})`);
   }
-  if (dist.clawboss !== 1) {
-    errors.push(`Must have exactly 1 Clawboss (got ${dist.clawboss})`);
-  }
   if (playerCount < MIN_PLAYERS) {
     errors.push(`Player count ${playerCount} is below minimum ${MIN_PLAYERS}`);
   }
-  if (dist.initiate !== 1) {
-    errors.push(`Must have exactly 1 Initiate (got ${dist.initiate})`);
+
+  // Clawboss: 1 for 6-9, 1-2 for 10, 2 for 11-12
+  if (playerCount <= 9 && dist.clawboss !== 1) {
+    errors.push(`Must have exactly 1 Clawboss at ${playerCount} players (got ${dist.clawboss})`);
   }
+  if (playerCount === 10 && (dist.clawboss < 1 || dist.clawboss > 2)) {
+    errors.push(`Must have 1-2 Clawboss at 10 players (got ${dist.clawboss})`);
+  }
+  if (playerCount >= 11 && dist.clawboss !== 2) {
+    errors.push(`Must have exactly 2 Clawboss at ${playerCount} players (got ${dist.clawboss})`);
+  }
+
+  // Initiate: 0 at 6, 1 at 7-11, 1-2 at 12
+  if (playerCount === 6 && dist.initiate !== 0) {
+    errors.push(`Must have 0 Initiate at 6 players (got ${dist.initiate})`);
+  }
+  if (playerCount >= 7 && playerCount <= 11 && dist.initiate !== 1) {
+    errors.push(`Must have exactly 1 Initiate at ${playerCount} players (got ${dist.initiate})`);
+  }
+  if (playerCount === 12 && (dist.initiate < 1 || dist.initiate > 2)) {
+    errors.push(`Must have 1-2 Initiate at 12 players (got ${dist.initiate})`);
+  }
+
   if (dist.krill < 1) {
     errors.push(`Must have at least 1 Krill (got ${dist.krill})`);
   }

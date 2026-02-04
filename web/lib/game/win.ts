@@ -1,5 +1,6 @@
 // ── Win Condition Engine ──
 // PRD §4: Win Conditions
+// Updated: supports 1-2 Clawboss (10+ players can have 2)
 
 import { Player, ROLE_ALIGNMENT, WinConditionResult } from './types';
 
@@ -7,7 +8,7 @@ import { Player, ROLE_ALIGNMENT, WinConditionResult } from './types';
  * Check all win conditions.
  *
  * Rules:
- * - Pod wins: Clawboss eliminated via vote
+ * - Pod wins: ALL Clawboss eliminated (1 or 2 depending on player count)
  * - Clawboss wins: Reaches parity (killers >= town alive)
  *   - Initiate is NEUTRAL — excluded from parity calculation
  * - Initiate wins: Survives to last 3 alive AND game lasted 3+ rounds
@@ -18,14 +19,16 @@ export function checkWinConditions(
   round: number
 ): WinConditionResult {
   const alive = players.filter((p) => p.status === 'alive');
-  const clawboss = players.find((p) => p.role === 'clawboss');
+  const allClawboss = players.filter((p) => p.role === 'clawboss');
 
-  if (!clawboss) {
+  if (allClawboss.length === 0) {
     throw new Error('No Clawboss found — invalid game state');
   }
 
-  // Pod wins: Clawboss is eliminated
-  if (clawboss.status === 'eliminated') {
+  // Pod wins: ALL Clawboss eliminated
+  const allClawbossEliminated = allClawboss.every((cb) => cb.status === 'eliminated');
+
+  if (allClawbossEliminated) {
     const initiateAlive = alive.find((p) => p.role === 'initiate');
     const initiateWins = !!(initiateAlive && round >= 3 && alive.length <= 3);
 
@@ -33,7 +36,9 @@ export function checkWinConditions(
       game_over: true,
       winner_side: 'pod',
       initiate_wins: initiateWins,
-      reason: 'Clawboss eliminated',
+      reason: allClawboss.length === 1
+        ? 'Clawboss eliminated'
+        : 'Both Clawboss eliminated',
     };
   }
 
@@ -58,7 +63,7 @@ export function checkWinConditions(
     };
   }
 
-  // Edge case: all town dead but clawboss alive (should be caught by parity above)
+  // Edge case: all town dead but clawboss alive
   if (aliveTown === 0 && aliveKillers > 0) {
     return {
       game_over: true,
