@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { createPod, joinPod, canStartGame, isLobbyExpired, cancelPod, checkLobbyTimeout } from './lobby';
+import { createPod, joinPod, getJoinUrl, canStartGame, isLobbyExpired, cancelPod, checkLobbyTimeout } from './lobby';
 import { mockPlayer } from './test-helpers';
 import { MIN_PLAYERS, MAX_PLAYERS, HARD_MAX_PLAYERS } from './types';
 
@@ -28,6 +28,38 @@ describe('Pod Creation', () => {
   it('T-LOBBY-003: default entry fee is 0.01 SOL', () => {
     const pod = createPod({ id: 'pod_1', pod_number: 1 });
     expect(pod.entry_fee).toBe(10_000_000);
+  });
+});
+
+describe('Join URL', () => {
+  it('T-LOBBY-005: join URL includes pod, network, and token', () => {
+    const pod = createPod({
+      id: 'pod_42',
+      pod_number: 42,
+      config: { network_name: 'solana-devnet', token: 'WSOL' },
+    });
+    const url = getJoinUrl(pod);
+    expect(url).toBe('https://moltmob.com/api/game/join?pod=pod_42&network=solana-devnet&token=WSOL');
+  });
+
+  it('T-LOBBY-006: join URL reflects mainnet config', () => {
+    const pod = createPod({
+      id: 'pod_99',
+      pod_number: 99,
+      config: { network_name: 'solana-mainnet', token: 'WSOL' },
+    });
+    const url = getJoinUrl(pod);
+    const parsed = new URL(url);
+    expect(parsed.searchParams.get('pod')).toBe('pod_99');
+    expect(parsed.searchParams.get('network')).toBe('solana-mainnet');
+    expect(parsed.searchParams.get('token')).toBe('WSOL');
+  });
+
+  it('T-LOBBY-007: join URL is parseable and has correct base', () => {
+    const pod = createPod({ id: 'pod_1', pod_number: 1 });
+    const url = new URL(getJoinUrl(pod));
+    expect(url.origin).toBe('https://moltmob.com');
+    expect(url.pathname).toBe('/api/game/join');
   });
 });
 

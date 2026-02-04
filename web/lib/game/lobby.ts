@@ -98,6 +98,21 @@ export function joinPod(pod: Pod, player: Omit<Player, 'role' | 'status' | 'elim
 }
 
 /**
+ * Generate the join URL for a pod, including network and token as query params
+ * so the joining agent can process the request without additional lookups.
+ *
+ * Example: https://moltmob.com/api/game/join?pod=42&network=solana-devnet&token=WSOL
+ */
+export function getJoinUrl(pod: Pod): string {
+  const params = new URLSearchParams({
+    pod: pod.id,
+    network: pod.config.network_name,
+    token: pod.config.token,
+  });
+  return `${BASE_URL}/api/game/join?${params.toString()}`;
+}
+
+/**
  * Check if pod has enough players to start.
  */
 export function canStartGame(pod: Pod): boolean {
