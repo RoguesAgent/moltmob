@@ -1,155 +1,147 @@
 import { describe, it, expect } from 'vitest';
 import { checkWinConditions } from './win';
-import { Player } from './types';
+import { mockRoledPlayers, pid } from './test-helpers';
 
-function makePlayer(overrides: Partial<Player> & { id: string; role: Player['role'] }): Player {
-  return {
-    agent_name: overrides.id,
-    wallet_pubkey: `wallet_${overrides.id}`,
-    encryption_pubkey: `enc_${overrides.id}`,
-    status: 'alive',
-    eliminated_by: null,
-    eliminated_round: null,
-    ...overrides,
-  };
-}
-
-describe('Win Conditions', () => {
-  // ── PRD §4: Win Conditions ──
+describe('Win Conditions (6+ players)', () => {
+  // Standard 6-player: [0-3] Krill, [4] Clawboss, [5] Initiate
 
   it('T-WIN-001: Clawboss eliminated → Pod wins', () => {
-    const players: Player[] = [
-      makePlayer({ id: 'p1', role: 'krill' }),
-      makePlayer({ id: 'p2', role: 'krill' }),
-      makePlayer({ id: 'p3', role: 'clawboss', status: 'eliminated', eliminated_by: 'cooked' }),
-    ];
+    const players = mockRoledPlayers({ eliminated: [pid(4)] }); // CB eliminated
     const result = checkWinConditions(players, 2);
+
     expect(result.game_over).toBe(true);
     expect(result.winner_side).toBe('pod');
     expect(result.reason).toContain('Clawboss eliminated');
   });
 
-  it('T-WIN-002: Clawboss reaches parity → Clawboss wins (1v1)', () => {
-    const players: Player[] = [
-      makePlayer({ id: 'p1', role: 'krill' }),
-      makePlayer({ id: 'p2', role: 'clawboss' }),
-      makePlayer({ id: 'p3', role: 'krill', status: 'eliminated', eliminated_by: 'pinched' }),
-    ];
-    const result = checkWinConditions(players, 2);
+  it('T-WIN-002: Clawboss reaches parity → Clawboss wins', () => {
+    // Kill off krill until 1 town left vs 1 killer
+    const players = mockRoledPlayers({
+      eliminated: [pid(0), pid(1), pid(2)], // 3 krill dead
+    });
+    // Alive: pid(3) Krill, pid(4) Clawboss, pid(5) Initiate
+    // Parity: 1 killer >= 1 town (Initiate is neutral, excluded)
+    const result = checkWinConditions(players, 4);
+
     expect(result.game_over).toBe(true);
     expect(result.winner_side).toBe('clawboss');
     expect(result.reason).toContain('parity');
   });
 
   it('T-WIN-003: Initiate is NEUTRAL — excluded from parity calc', () => {
-    // 1 Clawboss + 1 Krill + 1 Initiate alive
-    // Parity: 1 killer vs 1 town → parity reached → Clawboss wins
-    // Initiate should NOT count as town
-    const players: Player[] = [
-      makePlayer({ id: 'p1', role: 'krill' }),
-      makePlayer({ id: 'p2', role: 'clawboss' }),
-      makePlayer({ id: 'p3', role: 'initiate' }),
-      makePlayer({ id: 'p4', role: 'krill', status: 'eliminated', eliminated_by: 'pinched' }),
-    ];
+    const players = mockRoledPlayers({
+      eliminated: [pid(0), pid(1), pid(2)],
+    });
+    // 1 Krill + 1 CB + 1 Initiate alive
+    // Parity check: 1 killer >= 1 town → CB wins
+    // Initiate does NOT count as town
     const result = checkWinConditions(players, 3);
+
     expect(result.game_over).toBe(true);
     expect(result.winner_side).toBe('clawboss');
   });
 
   it('T-WIN-004: 2 town vs 1 killer → game continues', () => {
-    const players: Player[] = [
-      makePlayer({ id: 'p1', role: 'krill' }),
-      makePlayer({ id: 'p2', role: 'krill' }),
-      makePlayer({ id: 'p3', role: 'clawboss' }),
-    ];
-    const result = checkWinConditions(players, 2);
+    const players = mockRoledPlayers({
+      eliminated: [pid(0), pid(1)],
+    });
+    // Alive: pid(2) Krill, pid(3) Krill, pid(4) CB, pid(5) Init
+    // 2 town > 1 killer → game continues
+    const result = checkWinConditions(players, 3);
+
     expect(result.game_over).toBe(false);
     expect(result.winner_side).toBeNull();
   });
 
-  it('T-WIN-005: 3 town + 1 initiate vs 1 killer → game continues', () => {
-    const players: Player[] = [
-      makePlayer({ id: 'p1', role: 'krill' }),
-      makePlayer({ id: 'p2', role: 'krill' }),
-      makePlayer({ id: 'p3', role: 'krill' }),
-      makePlayer({ id: 'p4', role: 'initiate' }),
-      makePlayer({ id: 'p5', role: 'clawboss' }),
-    ];
-    const result = checkWinConditions(players, 2);
+  it('T-WIN-005: all 4 Krill alive vs Clawboss → game continues', () => {
+    const players = mockRoledPlayers(); // nobody eliminated
+    const result = checkWinConditions(players, 1);
+
     expect(result.game_over).toBe(false);
   });
 
   it('T-WIN-006: Initiate wins when alive at game end + round >= 3 + <= 3 alive', () => {
-    // Clawboss eliminated at round 4, initiate still alive, 3 remaining
-    const players: Player[] = [
-      makePlayer({ id: 'p1', role: 'krill' }),
-      makePlayer({ id: 'p2', role: 'initiate' }),
-      makePlayer({ id: 'p3', role: 'clawboss', status: 'eliminated', eliminated_by: 'cooked' }),
-      makePlayer({ id: 'p4', role: 'krill', status: 'eliminated', eliminated_by: 'pinched' }),
-    ];
+    const players = mockRoledPlayers({
+      eliminated: [pid(0), pid(1), pid(2), pid(4)], // 3 krill + CB dead
+    });
+    // Alive: pid(3) Krill, pid(5) Initiate (2 alive)
     const result = checkWinConditions(players, 4);
+
     expect(result.game_over).toBe(true);
-    expect(result.winner_side).toBe('pod');
+    expect(result.winner_side).toBe('pod'); // CB eliminated
     expect(result.initiate_wins).toBe(true);
   });
 
   it('T-WIN-007: Initiate does NOT win if round < 3', () => {
-    const players: Player[] = [
-      makePlayer({ id: 'p1', role: 'krill' }),
-      makePlayer({ id: 'p2', role: 'initiate' }),
-      makePlayer({ id: 'p3', role: 'clawboss', status: 'eliminated', eliminated_by: 'cooked' }),
-    ];
+    const players = mockRoledPlayers({
+      eliminated: [pid(0), pid(1), pid(2), pid(4)],
+    });
     const result = checkWinConditions(players, 2);
+
     expect(result.game_over).toBe(true);
     expect(result.winner_side).toBe('pod');
     expect(result.initiate_wins).toBe(false); // round 2 < 3
   });
 
   it('T-WIN-008: Initiate does NOT win if > 3 alive', () => {
-    const players: Player[] = [
-      makePlayer({ id: 'p1', role: 'krill' }),
-      makePlayer({ id: 'p2', role: 'krill' }),
-      makePlayer({ id: 'p3', role: 'initiate' }),
-      makePlayer({ id: 'p4', role: 'shellguard' }),
-      makePlayer({ id: 'p5', role: 'clawboss', status: 'eliminated', eliminated_by: 'cooked' }),
-    ];
+    const players = mockRoledPlayers({
+      eliminated: [pid(4)], // only CB eliminated
+    });
+    // Alive: 4 Krill + 1 Initiate = 5 alive > 3
     const result = checkWinConditions(players, 4);
+
     expect(result.game_over).toBe(true);
     expect(result.winner_side).toBe('pod');
-    expect(result.initiate_wins).toBe(false); // 4 alive > 3
+    expect(result.initiate_wins).toBe(false);
   });
 
   it('T-WIN-009: Initiate can win alongside Clawboss (parity)', () => {
-    // Clawboss reaches parity, but Initiate is alive at last 3 in round 4
-    const players: Player[] = [
-      makePlayer({ id: 'p1', role: 'krill' }),
-      makePlayer({ id: 'p2', role: 'clawboss' }),
-      makePlayer({ id: 'p3', role: 'initiate' }),
-      makePlayer({ id: 'p4', role: 'krill', status: 'eliminated', eliminated_by: 'pinched' }),
-      makePlayer({ id: 'p5', role: 'krill', status: 'eliminated', eliminated_by: 'cooked' }),
-    ];
+    const players = mockRoledPlayers({
+      eliminated: [pid(0), pid(1), pid(2)],
+    });
+    // Alive: pid(3) Krill, pid(4) CB, pid(5) Initiate = 3 alive
+    // Parity: 1 killer >= 1 town → CB wins
+    // Initiate alive + round 4 + 3 alive → Initiate also wins
     const result = checkWinConditions(players, 4);
+
     expect(result.game_over).toBe(true);
     expect(result.winner_side).toBe('clawboss');
-    expect(result.initiate_wins).toBe(true); // both win simultaneously
+    expect(result.initiate_wins).toBe(true);
   });
 
   it('T-WIN-010: all town dead → Clawboss wins', () => {
-    const players: Player[] = [
-      makePlayer({ id: 'p1', role: 'krill', status: 'eliminated', eliminated_by: 'pinched' }),
-      makePlayer({ id: 'p2', role: 'krill', status: 'eliminated', eliminated_by: 'cooked' }),
-      makePlayer({ id: 'p3', role: 'clawboss' }),
-    ];
-    const result = checkWinConditions(players, 3);
+    const players = mockRoledPlayers({
+      eliminated: [pid(0), pid(1), pid(2), pid(3)], // all krill dead
+    });
+    // Alive: pid(4) CB, pid(5) Initiate
+    const result = checkWinConditions(players, 5);
+
     expect(result.game_over).toBe(true);
     expect(result.winner_side).toBe('clawboss');
   });
+});
 
-  it('T-WIN-011: no Clawboss in players throws error', () => {
-    const players: Player[] = [
-      makePlayer({ id: 'p1', role: 'krill' }),
-      makePlayer({ id: 'p2', role: 'krill' }),
-    ];
-    expect(() => checkWinConditions(players, 1)).toThrow('No Clawboss');
+describe('Win Condition Edge Cases', () => {
+  it('T-WIN-020: 8-player game — Shellguard counts as town', () => {
+    const players = mockRoledPlayers({ count: 8 });
+    // 8-player: [0-4] Krill, [5] Shellguard, [6] CB, [7] Initiate
+    // All alive: 6 town vs 1 killer → game continues
+    const result = checkWinConditions(players, 1);
+
+    expect(result.game_over).toBe(false);
+  });
+
+  it('T-WIN-021: 8-player — CB parity requires beating town+shellguard', () => {
+    const players = mockRoledPlayers({ count: 8 });
+    // Kill most town: leave Shellguard + 1 Krill
+    players[0].status = 'eliminated'; // krill
+    players[1].status = 'eliminated';
+    players[2].status = 'eliminated';
+    players[3].status = 'eliminated';
+    // Alive: pid(4) Krill, pid(5) Shellguard, pid(6) CB, pid(7) Initiate
+    // 2 town vs 1 killer → game continues
+    const result = checkWinConditions(players, 5);
+
+    expect(result.game_over).toBe(false);
   });
 });

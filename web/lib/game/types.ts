@@ -33,6 +33,9 @@ export interface Player {
   eliminated_round: number | null;
 }
 
+export const MIN_PLAYERS = 6;
+export const MAX_PLAYERS = 12;
+
 export interface Pod {
   id: string;
   pod_number: number;
@@ -47,6 +50,7 @@ export interface Pod {
   winner_side: 'pod' | 'clawboss' | null;
   players: Player[];
   config: PodConfig;
+  lobby_deadline: number; // unix ms — lobby closes at this time
 }
 
 export interface PodConfig {
@@ -54,6 +58,13 @@ export interface PodConfig {
   mock_moltbook: boolean;
   max_rounds: number; // default 10
   rake_percent: number; // default 10
+  lobby_timeout_ms: number; // default 300_000 (5 min)
+}
+
+export interface CancellationResult {
+  cancelled: boolean;
+  reason: string;
+  refunds: PayoutEntry[];
 }
 
 export interface NightResolution {

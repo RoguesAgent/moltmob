@@ -2,21 +2,20 @@
 // PRD §3.2: Distribution Table
 // Updated: Initiate only exists at 6+ players
 
-import { Role, RoleDistribution } from './types';
+import { Role, RoleDistribution, MIN_PLAYERS, MAX_PLAYERS } from './types';
 
 /**
  * Get the role distribution for a given player count.
- * Always exactly 1 Clawboss.
- * Initiate only at 6+ players.
- * Shellguard at 6+ players (0-2 depending on count).
+ * Always exactly 1 Clawboss, 1 Initiate (min 6 players guarantees this).
+ * Shellguard at 8+ players (1-2 depending on count).
  * Remaining slots filled with Krill.
  */
 export function getRoleDistribution(playerCount: number): RoleDistribution {
-  if (playerCount < 3) {
-    throw new Error(`Cannot create game with fewer than 3 players (got ${playerCount})`);
+  if (playerCount < MIN_PLAYERS) {
+    throw new Error(`Cannot create game with fewer than ${MIN_PLAYERS} players (got ${playerCount})`);
   }
-  if (playerCount > 12) {
-    throw new Error(`Cannot create game with more than 12 players (got ${playerCount})`);
+  if (playerCount > MAX_PLAYERS) {
+    throw new Error(`Cannot create game with more than ${MAX_PLAYERS} players (got ${playerCount})`);
   }
 
   const dist: RoleDistribution = {
@@ -99,11 +98,11 @@ export function validateDistribution(dist: RoleDistribution, playerCount: number
   if (dist.clawboss !== 1) {
     errors.push(`Must have exactly 1 Clawboss (got ${dist.clawboss})`);
   }
-  if (playerCount < 6 && dist.initiate > 0) {
-    errors.push(`Initiate should not exist below 6 players (got ${dist.initiate} at ${playerCount})`);
+  if (playerCount < MIN_PLAYERS) {
+    errors.push(`Player count ${playerCount} is below minimum ${MIN_PLAYERS}`);
   }
-  if (playerCount >= 6 && dist.initiate !== 1) {
-    errors.push(`Must have exactly 1 Initiate at 6+ players (got ${dist.initiate})`);
+  if (dist.initiate !== 1) {
+    errors.push(`Must have exactly 1 Initiate (got ${dist.initiate})`);
   }
   if (dist.krill < 1) {
     errors.push(`Must have at least 1 Krill (got ${dist.krill})`);
