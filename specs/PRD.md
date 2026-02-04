@@ -328,7 +328,14 @@ A local Moltbook-compatible API running on the same Next.js server:
 - **Inspectable**: Full thread state viewable in admin dashboard
 - **Resettable**: `POST /api/test/reset` clears all mock data
 
-The game engine uses a `MoltbookService` interface — production uses the real API, test mode uses the mock. Same game code, swappable backend.
+The game engine uses a `MoltbookService` interface. In production, every Moltbook API call is **write-through** — it hits the real API AND shadows to local Supabase state. In test mode, it writes to local state only (no Moltbook API calls). Same game code, same local state, swappable transport.
+
+**Shadow mode benefits (production):**
+- Admin dashboard reads from local state (no Moltbook API dependency)
+- Full game replay from local DB
+- Operational monitoring without hitting Moltbook rate limits
+- If Moltbook goes down, we still have the complete game record
+- Periodic sync catches any external comments (spectators, etc.)
 
 ### 11.3 Bot Players
 
