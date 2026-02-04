@@ -1,160 +1,86 @@
 -- ============================================
--- RLS Access Tiers Migration
+-- RLS Access Tiers — ZERO anon access
 -- ============================================
--- 
--- Access model:
---   1. service_role (supabaseAdmin) → full read/write on everything (bypasses RLS)
---   2. anon (supabaseClient / browser) → read-only on PUBLIC data only
---   3. API routes enforce their own auth layers:
---      - /api/v1/*     → Bearer {agent_api_key}  (public game + moltbook)
---      - /api/admin/*  → x-admin-secret           (read-only dashboard)
---      - /api/gm/*     → x-gm-secret              (full game state, private roles)
 --
--- Rule: if a column is private (e.g., role, api_key), the anon policy
--- must NOT expose it. Only the API route decides what to return.
+-- Design: the Supabase anon key is a DEAD KEY.
+-- ALL data access goes through API routes using the service_role key.
+--
+-- API tiers:
+--   /api/v1/*     → Bearer {agent_api_key}  — public game + moltbook
+--   /api/admin/*  → x-admin-secret          — read-only dashboard
+--   /api/gm/*     → x-gm-secret            — full game control
+--
+-- The API routes decide what data to return. The database trusts
+-- only the service_role. No anon policies exist.
 -- ============================================
 
--- ============================================
--- AGENTS
--- ============================================
--- Anon can read public agent info (name, wallet, created_at)
--- NEVER expose: api_key, balance (balance visible via own agent's Bearer auth)
-CREATE POLICY "anon_read_agents_public"
-  ON agents FOR SELECT
-  TO anon
-  USING (true);
--- Note: api_key is in the table but API routes control what columns are returned.
--- The anon key should never be used directly by agents — they use Bearer auth.
--- This policy exists for the public dashboard/leaderboard.
+-- Drop any existing anon policies that might have been created
+DO $$ 
+DECLARE
+  r RECORD;
+BEGIN
+  FOR r IN (
+    SELECT policyname, tablename
+    FROM pg_policies
+    WHERE policyname LIKE 'anon_%'
+  ) LOOP
+    EXECUTE format('DROP POLICY IF EXISTS %I ON %I', r.policyname, r.tablename);
+  END LOOP;
+END $$;
 
--- No insert/update/delete for anon on agents
--- (RLS default-deny handles this, but be explicit)
+-- Drop public views (not needed — all access goes through API routes)
+DROP VIEW IF EXISTS public_game_players;
+DROP VIEW IF EXISTS public_agents;
 
--- ============================================
--- SUBMOLTS
--- ============================================
--- Public read (categories are public)
-CREATE POLICY "anon_read_submolts"
-  ON submolts FOR SELECT
-  TO anon
-  USING (true);
+-- Revoke any grants to anon on views/tables (belt and suspenders)
+DO $$
+DECLARE
+  t text;
+BEGIN
+  FOR t IN (
+    SELECT tablename FROM pg_tables WHERE schemaname = 'public'
+  ) LOOP
+    EXECUTE format('REVOKE ALL ON %I FROM anon', t);
+  END LOOP;
+END $$;
 
--- ============================================
--- POSTS
--- ============================================
--- Public read (Moltbook posts are public)
-CREATE POLICY "anon_read_posts"
-  ON posts FOR SELECT
-  TO anon
-  USING (true);
+-- Ensure RLS is enabled on ALL tables (idempotent)
+ALTER TABLE agents ENABLE ROW LEVEL SECURITY;
+ALTER TABLE submolts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE posts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE comments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE votes ENABLE ROW LEVEL SECURITY;
+ALTER TABLE rate_limits ENABLE ROW LEVEL SECURITY;
+ALTER TABLE rate_limit_config ENABLE ROW LEVEL SECURITY;
+ALTER TABLE game_pods ENABLE ROW LEVEL SECURITY;
+ALTER TABLE game_players ENABLE ROW LEVEL SECURITY;
+ALTER TABLE game_actions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE game_transactions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE gm_events ENABLE ROW LEVEL SECURITY;
 
--- ============================================
--- COMMENTS
--- ============================================
--- Public read
-CREATE POLICY "anon_read_comments"
-  ON comments FOR SELECT
-  TO anon
-  USING (true);
+-- Ensure service_role_all policies exist on every table
+-- (service_role bypasses RLS by default, but explicit policies are belt-and-suspenders)
+DO $$ 
+DECLARE
+  t text;
+BEGIN
+  FOR t IN VALUES
+    ('agents'), ('submolts'), ('posts'), ('comments'), ('votes'),
+    ('rate_limits'), ('rate_limit_config'),
+    ('game_pods'), ('game_players'), ('game_actions'),
+    ('game_transactions'), ('gm_events')
+  LOOP
+    IF NOT EXISTS (
+      SELECT 1 FROM pg_policies WHERE policyname = 'service_role_all' AND tablename = t
+    ) THEN
+      EXECUTE format(
+        'CREATE POLICY "service_role_all" ON %I FOR ALL USING (true) WITH CHECK (true)',
+        t
+      );
+    END IF;
+  END LOOP;
+END $$;
 
--- ============================================
--- VOTES
--- ============================================
--- Votes are semi-public (you can see counts on posts, but individual votes are private)
--- No anon read policy → individual votes stay private
-
--- ============================================
--- RATE LIMITS
--- ============================================
--- Private (internal tracking only)
--- No anon policies → denied
-
--- ============================================
--- RATE LIMIT CONFIG
--- ============================================
--- Admin only
--- No anon policies → denied
-
--- ============================================
--- GAME PODS
--- ============================================
--- Public read: agents can browse available pods
--- Status, phase, round, boil_meter, entry_fee are all public knowledge
-CREATE POLICY "anon_read_game_pods"
-  ON game_pods FOR SELECT
-  TO anon
-  USING (true);
-
--- ============================================
--- GAME PLAYERS
--- ============================================
--- Public read BUT the "role" column must be filtered by the API route.
--- At the DB level we allow SELECT (the API layer strips private fields).
--- Alternative: create a view. But since all agent access goes through API routes
--- that use service_role anyway, this policy is only for the public dashboard.
-CREATE POLICY "anon_read_game_players_public"
-  ON game_players FOR SELECT
-  TO anon
-  USING (true);
--- IMPORTANT: Any anon-facing query MUST NOT select the `role` column.
--- The public dashboard should use a view or explicit column list.
-
--- ============================================
--- GAME ACTIONS
--- ============================================
--- PRIVATE — night actions, votes, etc. are secret until GM publishes results
--- No anon policy → denied
-
--- ============================================
--- GAME TRANSACTIONS
--- ============================================
--- Public read: on-chain transactions are public anyway
--- Agents can verify their own payments
-CREATE POLICY "anon_read_game_transactions"
-  ON game_transactions FOR SELECT
-  TO anon
-  USING (true);
-
--- ============================================
--- GM EVENTS
--- ============================================
--- Public read: these are the GM's published announcements
--- This is what gets posted to Moltbook
-CREATE POLICY "anon_read_gm_events"
-  ON gm_events FOR SELECT
-  TO anon
-  USING (true);
-
--- ============================================
--- SECURITY VIEW: game_players without role column
--- For public-facing queries (dashboard, public API)
--- ============================================
-CREATE OR REPLACE VIEW public_game_players AS
-SELECT
-  gp.id,
-  gp.pod_id,
-  gp.agent_id,
-  a.name AS agent_name,
-  a.wallet_pubkey AS agent_wallet,
-  gp.status,
-  gp.eliminated_by,
-  gp.eliminated_round,
-  gp.created_at
-FROM game_players gp
-JOIN agents a ON a.id = gp.agent_id;
-
--- Grant anon read on the view
-GRANT SELECT ON public_game_players TO anon;
-
--- ============================================
--- SECURITY VIEW: public agent info (no api_key)
--- ============================================
-CREATE OR REPLACE VIEW public_agents AS
-SELECT
-  id,
-  name,
-  wallet_pubkey,
-  created_at
-FROM agents;
-
-GRANT SELECT ON public_agents TO anon;
+-- Result:
+--   anon key  → 0 policies → DENIED on all tables
+--   service_role → full access → used by API routes only
