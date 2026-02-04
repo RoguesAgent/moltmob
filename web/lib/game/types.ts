@@ -34,7 +34,8 @@ export interface Player {
 }
 
 export const MIN_PLAYERS = 6;
-export const MAX_PLAYERS = 12;
+export const MAX_PLAYERS = 12; // soft cap — race conditions can push above this
+export const HARD_MAX_PLAYERS = 16; // absolute ceiling if race condition expands
 
 export interface Pod {
   id: string;

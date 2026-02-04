@@ -9,6 +9,7 @@ import {
   CancellationResult,
   MIN_PLAYERS,
   MAX_PLAYERS,
+  HARD_MAX_PLAYERS,
   BASE_URL,
 } from './types';
 
@@ -57,14 +58,19 @@ export function createPod(params: {
 /**
  * Add a player to a pod lobby.
  * Returns error string if join fails, null on success.
+ *
+ * Race condition handling: if we're at max_players but below HARD_MAX,
+ * we expand the pod instead of rejecting. The check-first pattern makes
+ * this rare, but when it happens we grow gracefully.
  */
 export function joinPod(pod: Pod, player: Omit<Player, 'role' | 'status' | 'eliminated_by' | 'eliminated_round'>): string | null {
   if (pod.status !== 'lobby') {
     return `Pod ${pod.id} is not in lobby state (current: ${pod.status})`;
   }
 
-  if (pod.players.length >= pod.max_players) {
-    return `Pod ${pod.id} is full (${pod.max_players}/${pod.max_players})`;
+  // Hard ceiling — absolutely cannot exceed this
+  if (pod.players.length >= HARD_MAX_PLAYERS) {
+    return `Pod ${pod.id} is at hard maximum (${HARD_MAX_PLAYERS} players)`;
   }
 
   if (pod.players.some((p) => p.id === player.id)) {
@@ -82,6 +88,11 @@ export function joinPod(pod: Pod, player: Omit<Player, 'role' | 'status' | 'elim
     eliminated_by: null,
     eliminated_round: null,
   });
+
+  // If race condition pushed us past max_players, expand the cap
+  if (pod.players.length > pod.max_players) {
+    pod.max_players = pod.players.length;
+  }
 
   return null;
 }

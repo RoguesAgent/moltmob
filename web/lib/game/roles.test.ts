@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { getRoleDistribution, getRoleDistributionSeeded, assignRoles, validateDistribution } from './roles';
-import { MIN_PLAYERS, MAX_PLAYERS } from './types';
+import { MIN_PLAYERS, MAX_PLAYERS, HARD_MAX_PLAYERS } from './types';
 
 describe('Role Distribution', () => {
   it('T-ROLE-001: rejects fewer than 6 players', () => {
@@ -9,8 +9,28 @@ describe('Role Distribution', () => {
     expect(() => getRoleDistribution(0)).toThrow(`fewer than ${MIN_PLAYERS}`);
   });
 
-  it('T-ROLE-002: rejects more than 12 players', () => {
-    expect(() => getRoleDistribution(13)).toThrow(`more than ${MAX_PLAYERS}`);
+  it('T-ROLE-002: rejects more than 16 players (hard max)', () => {
+    expect(() => getRoleDistribution(17)).toThrow('more than 16');
+    expect(() => getRoleDistribution(100)).toThrow('more than 16');
+  });
+
+  // ── 13-16: overflow (race condition) — extra slots are Krill ──
+  it('T-ROLE-002b: 13 players (overflow) — same as 12 but +1 Krill', () => {
+    const dist = getRoleDistributionSeeded(13, 0.2);
+    expect(dist.clawboss).toBe(2);
+    expect(dist.initiate).toBe(1); // low seed
+    expect(dist.shellguard).toBe(2);
+    expect(dist.krill).toBe(8); // 7+1 overflow
+    expect(dist.krill + dist.shellguard + dist.clawboss + dist.initiate).toBe(13);
+  });
+
+  it('T-ROLE-002c: 16 players (hard max) — works', () => {
+    const dist = getRoleDistributionSeeded(16, 0.8);
+    expect(dist.clawboss).toBe(2);
+    expect(dist.initiate).toBe(1); // only 12 exact gets 1-2 random; overflow gets 1
+    expect(dist.shellguard).toBe(2);
+    expect(dist.krill).toBe(11);
+    expect(dist.krill + dist.shellguard + dist.clawboss + dist.initiate).toBe(16);
   });
 
   // ── 6 players: 5K + 1CB, NO Initiate ──
@@ -93,8 +113,8 @@ describe('Role Distribution', () => {
   });
 
   // ── Invariants across all counts ──
-  it('T-ROLE-012: total roles always equals player count (seeded)', () => {
-    for (let n = MIN_PLAYERS; n <= MAX_PLAYERS; n++) {
+  it('T-ROLE-012: total roles always equals player count (6-16, seeded)', () => {
+    for (let n = MIN_PLAYERS; n <= HARD_MAX_PLAYERS; n++) {
       for (const seed of [0.1, 0.5, 0.9]) {
         const dist = getRoleDistributionSeeded(n, seed);
         const total = dist.krill + dist.shellguard + dist.clawboss + dist.initiate;
@@ -103,8 +123,8 @@ describe('Role Distribution', () => {
     }
   });
 
-  it('T-ROLE-013: at least 1 Krill at every player count', () => {
-    for (let n = MIN_PLAYERS; n <= MAX_PLAYERS; n++) {
+  it('T-ROLE-013: at least 1 Krill at every player count (6-16)', () => {
+    for (let n = MIN_PLAYERS; n <= HARD_MAX_PLAYERS; n++) {
       for (const seed of [0.1, 0.9]) {
         expect(getRoleDistributionSeeded(n, seed).krill).toBeGreaterThanOrEqual(1);
       }

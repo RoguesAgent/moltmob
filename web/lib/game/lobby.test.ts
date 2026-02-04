@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { createPod, joinPod, canStartGame, isLobbyExpired, cancelPod, checkLobbyTimeout } from './lobby';
 import { mockPlayer } from './test-helpers';
-import { MIN_PLAYERS } from './types';
+import { MIN_PLAYERS, MAX_PLAYERS, HARD_MAX_PLAYERS } from './types';
 
 describe('Pod Creation', () => {
   it('T-LOBBY-001: creates a pod in lobby state', () => {
@@ -73,18 +73,53 @@ describe('Joining a Pod', () => {
     expect(err).toContain('already in pod');
   });
 
-  it('T-LOBBY-013: cannot join a full pod (12 players)', () => {
+  it('T-LOBBY-013: race condition — 13th player expands pod instead of rejecting', () => {
     const pod = createPod({
       id: 'pod_1',
       pod_number: 1,
       config: { lobby_timeout_ms: 300_000 },
     });
 
-    for (let i = 0; i < 12; i++) {
+    // Fill to soft max (12)
+    for (let i = 0; i < MAX_PLAYERS; i++) {
+      const err = joinPod(pod, mockPlayer(i));
+      expect(err).toBeNull();
+    }
+
+    // 13th player — race condition, should expand
+    const err = joinPod(pod, mockPlayer(12));
+    expect(err).toBeNull();
+    expect(pod.players).toHaveLength(13);
+    expect(pod.max_players).toBe(13); // expanded
+  });
+
+  it('T-LOBBY-013b: hard max (16) cannot be exceeded', () => {
+    const pod = createPod({
+      id: 'pod_1',
+      pod_number: 1,
+      config: { lobby_timeout_ms: 300_000 },
+    });
+
+    for (let i = 0; i < HARD_MAX_PLAYERS; i++) {
       joinPod(pod, mockPlayer(i));
     }
-    const err = joinPod(pod, mockPlayer(12));
-    expect(err).toContain('full');
+    const err = joinPod(pod, mockPlayer(HARD_MAX_PLAYERS));
+    expect(err).toContain('hard maximum');
+    expect(pod.players).toHaveLength(HARD_MAX_PLAYERS);
+  });
+
+  it('T-LOBBY-013c: overflow expands max_players incrementally', () => {
+    const pod = createPod({
+      id: 'pod_1',
+      pod_number: 1,
+      config: { lobby_timeout_ms: 300_000 },
+    });
+
+    for (let i = 0; i < 14; i++) {
+      joinPod(pod, mockPlayer(i));
+    }
+    expect(pod.max_players).toBe(14);
+    expect(pod.players).toHaveLength(14);
   });
 
   it('T-LOBBY-014: cannot join a cancelled pod', () => {

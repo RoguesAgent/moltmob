@@ -11,26 +11,27 @@
 //  11     |    2     |    1     |     1      |  7
 //  12     |    2     |   1-2    |     2      | 6-7
 
-import { Role, RoleDistribution, MIN_PLAYERS, MAX_PLAYERS } from './types';
+import { Role, RoleDistribution, MIN_PLAYERS, HARD_MAX_PLAYERS } from './types';
 
 /**
  * Get the role distribution for a given player count.
  *
  * Key rules:
  * - 6 players: NO Initiate
- * - 7+: 1 Initiate (except 12 can have 1-2)
+ * - 7+: 1 Initiate (except 12+ can have 1-2)
  * - 10: 1-2 Clawboss (random)
  * - 11+: 2 Clawboss
- * - 8+: 1 Shellguard (12: 2)
- * - 12: 1-2 Initiate (random)
+ * - 8+: 1 Shellguard (12+: 2)
+ * - 12+: 1-2 Initiate (random)
+ * - 13-16: overflow from race condition — extra slots are Krill
  * - Remaining: Krill
  */
 export function getRoleDistribution(playerCount: number): RoleDistribution {
   if (playerCount < MIN_PLAYERS) {
     throw new Error(`Cannot create game with fewer than ${MIN_PLAYERS} players (got ${playerCount})`);
   }
-  if (playerCount > MAX_PLAYERS) {
-    throw new Error(`Cannot create game with more than ${MAX_PLAYERS} players (got ${playerCount})`);
+  if (playerCount > HARD_MAX_PLAYERS) {
+    throw new Error(`Cannot create game with more than ${HARD_MAX_PLAYERS} players (got ${playerCount})`);
   }
 
   const dist: RoleDistribution = {
@@ -86,8 +87,8 @@ export function getRoleDistributionSeeded(playerCount: number, seed: number): Ro
   if (playerCount < MIN_PLAYERS) {
     throw new Error(`Cannot create game with fewer than ${MIN_PLAYERS} players (got ${playerCount})`);
   }
-  if (playerCount > MAX_PLAYERS) {
-    throw new Error(`Cannot create game with more than ${MAX_PLAYERS} players (got ${playerCount})`);
+  if (playerCount > HARD_MAX_PLAYERS) {
+    throw new Error(`Cannot create game with more than ${HARD_MAX_PLAYERS} players (got ${playerCount})`);
   }
 
   const dist: RoleDistribution = {
@@ -182,7 +183,7 @@ export function validateDistribution(dist: RoleDistribution, playerCount: number
     errors.push(`Player count ${playerCount} is below minimum ${MIN_PLAYERS}`);
   }
 
-  // Clawboss: 1 for 6-9, 1-2 for 10, 2 for 11-12
+  // Clawboss: 1 for 6-9, 1-2 for 10, 2 for 11+
   if (playerCount <= 9 && dist.clawboss !== 1) {
     errors.push(`Must have exactly 1 Clawboss at ${playerCount} players (got ${dist.clawboss})`);
   }
@@ -193,15 +194,15 @@ export function validateDistribution(dist: RoleDistribution, playerCount: number
     errors.push(`Must have exactly 2 Clawboss at ${playerCount} players (got ${dist.clawboss})`);
   }
 
-  // Initiate: 0 at 6, 1 at 7-11, 1-2 at 12
+  // Initiate: 0 at 6, 1 at 7-11, 1-2 at 12+
   if (playerCount === 6 && dist.initiate !== 0) {
     errors.push(`Must have 0 Initiate at 6 players (got ${dist.initiate})`);
   }
   if (playerCount >= 7 && playerCount <= 11 && dist.initiate !== 1) {
     errors.push(`Must have exactly 1 Initiate at ${playerCount} players (got ${dist.initiate})`);
   }
-  if (playerCount === 12 && (dist.initiate < 1 || dist.initiate > 2)) {
-    errors.push(`Must have 1-2 Initiate at 12 players (got ${dist.initiate})`);
+  if (playerCount >= 12 && (dist.initiate < 1 || dist.initiate > 2)) {
+    errors.push(`Must have 1-2 Initiate at ${playerCount} players (got ${dist.initiate})`);
   }
 
   if (dist.krill < 1) {

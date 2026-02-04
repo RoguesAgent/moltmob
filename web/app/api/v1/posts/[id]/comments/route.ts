@@ -6,6 +6,7 @@ import type {
   CommentResponse,
   MoltbookComment,
 } from '@/lib/moltbook/types';
+// MoltbookComment used for array type annotation
 import { CONTENT_LIMITS } from '@/lib/moltbook/types';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -51,15 +52,19 @@ export async function GET(
     return errorResponse('Failed to fetch comments', 500);
   }
 
-  const comments: MoltbookComment[] = (rawComments || []).map((c: Record<string, unknown>) => ({
-    id: c.id as string,
-    content: c.content as string,
-    upvotes: c.upvotes as number,
-    downvotes: c.downvotes as number,
-    created_at: c.created_at as string,
-    author: c.author as MoltbookComment['author'],
-    post_id: c.post_id as string,
-  }));
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const comments: MoltbookComment[] = (rawComments || []).map((c: any) => {
+    const author = Array.isArray(c.author) ? c.author[0] : c.author;
+    return {
+      id: c.id as string,
+      content: c.content as string,
+      upvotes: c.upvotes as number,
+      downvotes: c.downvotes as number,
+      created_at: c.created_at as string,
+      author: { id: author.id, name: author.name },
+      post_id: c.post_id as string,
+    };
+  });
 
   const response: ListCommentsResponse = {
     success: true,
@@ -138,6 +143,9 @@ export async function POST(
       .update({ comment_count: (post.comment_count || 0) + 1 })
       .eq('id', id);
 
+    // Supabase returns joined relations — extract single object
+    const commentAuthor = Array.isArray(comment.author) ? comment.author[0] : comment.author;
+
     const response: CommentResponse = {
       success: true,
       comment: {
@@ -146,7 +154,7 @@ export async function POST(
         upvotes: comment.upvotes,
         downvotes: comment.downvotes,
         created_at: comment.created_at,
-        author: comment.author as MoltbookComment['author'],
+        author: { id: commentAuthor.id, name: commentAuthor.name },
         post_id: comment.post_id,
       },
     };

@@ -67,18 +67,23 @@ export async function GET(req: NextRequest) {
     return errorResponse('Failed to fetch posts', 500);
   }
 
-  let posts: MoltbookPost[] = (rawPosts || []).map((p: Record<string, unknown>) => ({
-    id: p.id as string,
-    title: p.title as string,
-    content: (p.content as string) || '',
-    url: (p.url as string) || null,
-    upvotes: p.upvotes as number,
-    downvotes: p.downvotes as number,
-    comment_count: p.comment_count as number,
-    created_at: p.created_at as string,
-    author: p.author as MoltbookPost['author'],
-    submolt: p.submolt as MoltbookPost['submolt'],
-  }));
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let posts: MoltbookPost[] = (rawPosts || []).map((p: any) => {
+    const author = Array.isArray(p.author) ? p.author[0] : p.author;
+    const submolt = Array.isArray(p.submolt) ? p.submolt[0] : p.submolt;
+    return {
+      id: p.id as string,
+      title: p.title as string,
+      content: (p.content as string) || '',
+      url: (p.url as string) || null,
+      upvotes: p.upvotes as number,
+      downvotes: p.downvotes as number,
+      comment_count: p.comment_count as number,
+      created_at: p.created_at as string,
+      author: { id: author.id, name: author.name },
+      submolt: { id: submolt.id, name: submolt.name, display_name: submolt.display_name },
+    };
+  });
 
   // Apply "hot" sort in memory if needed
   if (sort === 'hot') {
@@ -169,6 +174,10 @@ export async function POST(req: NextRequest) {
       return errorResponse('Failed to create post', 500);
     }
 
+    // Supabase returns joined relations — extract single object
+    const author = Array.isArray(post.author) ? post.author[0] : post.author;
+    const postSubmolt = Array.isArray(post.submolt) ? post.submolt[0] : post.submolt;
+
     const response: PostResponse = {
       success: true,
       post: {
@@ -180,8 +189,8 @@ export async function POST(req: NextRequest) {
         downvotes: post.downvotes,
         comment_count: post.comment_count,
         created_at: post.created_at,
-        author: post.author as MoltbookPost['author'],
-        submolt: post.submolt as MoltbookPost['submolt'],
+        author: { id: author.id, name: author.name },
+        submolt: { id: postSubmolt.id, name: postSubmolt.name, display_name: postSubmolt.display_name },
       },
     };
 
