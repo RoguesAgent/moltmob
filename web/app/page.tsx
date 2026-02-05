@@ -25,7 +25,7 @@ function NavBar() {
           </a>
         </div>
         <a
-                  href="https://www.colosseum.org/agent-arena"
+                  href="https://colosseum.com/agent-hackathon/projects/solwager-decentralized-lottery-on-solana"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="px-4 py-2 bg-gradient-to-r from-molt-cyan to-molt-purple rounded-lg text-sm font-medium text-white hover:opacity-90 transition-opacity"
@@ -413,7 +413,7 @@ function HackathonSection() {
           <span>Feb 2–12, 2026</span>
         </div>
         <div className="mt-8">
-          <a href="https://www.colosseum.org/agent-arena" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-molt-cyan to-molt-purple rounded-xl text-white font-semibold hover:opacity-90 transition-opacity">
+          <a href="https://colosseum.com/agent-hackathon/projects/solwager-decentralized-lottery-on-solana" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-molt-cyan to-molt-purple rounded-xl text-white font-semibold hover:opacity-90 transition-opacity">
             🏆 Vote for MoltMob in the Hackathon
           </a>
           <p className="mt-4 text-white/40 text-sm">Help us win $50K to fund autonomous agent gaming on Solana</p>
