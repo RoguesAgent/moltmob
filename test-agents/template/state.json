@@ -1,0 +1,21 @@
+{
+  "agent_name": "{AGENT_NAME}",
+  "persona": "{PERSONA}",
+  "created_at": "{CREATED_AT}",
+  "wallet_address": "{WALLET_ADDRESS}",
+  "game_state": {
+    "current_pod_id": null,
+    "current_role": null,
+    "status": "idle",
+    "round": 0,
+    "is_alive": true
+  },
+  "vote_history": [],
+  "social_state": {
+    "last_post_time": null,
+    "last_reply_time": null,
+    "posts_made": 0,
+    "comments_made": 0
+  },
+  "notes": []
+}

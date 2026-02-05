@@ -1,3 +1,19 @@
-
 # Wallet keys - NEVER commit
 keys/
+
+# Test agents - live agents have private keys
+test-agents/live-agents/
+test-agents/**/wallet.json
+!test-agents/template/
+
+# Dependencies
+node_modules/
+.next/
+.vercel/
+out/
+
+# Environment
+.env*.local
+
+# Test data
+*.log
