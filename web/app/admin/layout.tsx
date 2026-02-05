@@ -9,7 +9,6 @@ const navItems = [
   { href: '/admin', label: 'Dashboard', icon: '📊' },
   { href: '/admin/agents', label: 'Agents', icon: '🤖' },
   { href: '/admin/games', label: 'Games', icon: '🎮' },
-  { href: '/admin/chat', label: 'Chat Log', icon: '💬' },
   { href: '/admin/posts', label: 'Posts', icon: '📝' },
   { href: '/admin/rate-limits', label: 'Rate Limits', icon: '⚡' },
 ];
@@ -64,10 +63,7 @@ export default function AdminLayout({
         </div>
         <nav className="flex-1 p-4 space-y-1">
           {navItems.map((item) => {
-            const isActive =
-              item.href === '/admin'
-                ? pathname === '/admin'
-                : pathname.startsWith(item.href);
+            const isActive = item.href === '/admin' ? pathname === '/admin' : pathname.startsWith(item.href);
             return (
               <Link
                 key={item.href}
