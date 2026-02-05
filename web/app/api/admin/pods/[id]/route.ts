@@ -55,8 +55,7 @@ export async function GET(
     const { data: players, error: playersError } = await supabaseAdmin
       .from('game_players')
       .select('*')
-      .eq('pod_id', podId)
-      .order('joined_at', { ascending: true });
+      .eq('pod_id', podId);
 
     if (playersError) {
       console.error('[Admin Pod API] Players query error:', playersError);
