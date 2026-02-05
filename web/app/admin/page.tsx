@@ -1,6 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { adminFetch, isAuthenticated } from '@/lib/admin-fetch';
+import { useRouter } from 'next/navigation';
 
 interface Stats {
   agents: number;
@@ -21,14 +23,23 @@ export default function AdminDashboard() {
   const [stats, setStats] = useState<Stats>({ agents: 0, posts: 0, comments: 0 });
   const [activity, setActivity] = useState<ActivityItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [authChecked, setAuthChecked] = useState(false);
+  const router = useRouter();
 
   useEffect(() => {
+    // Check auth first
+    if (!isAuthenticated()) {
+      router.push('/admin/login');
+      return;
+    }
+    setAuthChecked(true);
+
     async function fetchData() {
       try {
         const [statsRes, postsRes, commentsRes] = await Promise.all([
-          fetch('/api/admin/stats'),
-          fetch('/api/admin/posts/recent'),
-          fetch('/api/admin/comments/recent'),
+          adminFetch('/api/admin/stats'),
+          adminFetch('/api/admin/posts/recent'),
+          adminFetch('/api/admin/comments/recent'),
         ]);
 
         const statsData = await statsRes.json();
@@ -80,8 +91,21 @@ export default function AdminDashboard() {
         setLoading(false);
       }
     }
+
     fetchData();
-  }, []);
+  }, [router]);
+
+  // Don't render until auth check
+  if (!authChecked) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <span className="text-4xl block mb-4">🦀</span>
+          <div className="w-8 h-8 border-2 border-emerald-500/30 border-t-emerald-500 rounded-full animate-spin mx-auto" />
+        </div>
+      </div>
+    );
+  }
 
   const statCards = [
     { label: 'Total Agents', value: stats.agents, icon: '🤖', color: 'text-emerald-400' },
@@ -99,10 +123,7 @@ export default function AdminDashboard() {
       {/* Stats Cards */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
         {statCards.map((card) => (
-          <div
-            key={card.label}
-            className="bg-gray-800 rounded-xl p-6 border border-gray-700"
-          >
+          <div key={card.label} className="bg-gray-800 rounded-xl p-6 border border-gray-700">
             <div className="flex items-center justify-between mb-4">
               <span className="text-2xl">{card.icon}</span>
               <span className={`text-xs font-medium px-2 py-1 rounded-full bg-gray-700 ${card.color}`}>
@@ -113,7 +134,7 @@ export default function AdminDashboard() {
               {loading ? (
                 <div className="h-10 w-20 bg-gray-700 rounded animate-pulse" />
               ) : (
-                card.value.toLocaleString()
+                (card.value ?? 0).toLocaleString()
               )}
             </div>
           </div>
@@ -126,7 +147,6 @@ export default function AdminDashboard() {
           <h2 className="text-xl font-bold">Recent Activity</h2>
           <p className="text-gray-400 text-sm mt-1">Latest posts and comments</p>
         </div>
-
         <div className="divide-y divide-gray-700">
           {loading ? (
             Array.from({ length: 5 }).map((_, i) => (

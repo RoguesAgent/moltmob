@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { adminFetch, isAuthenticated } from '@/lib/admin-fetch';
+import { useRouter } from 'next/navigation';
 
 interface GamePod {
   id: string;
@@ -38,14 +40,19 @@ export default function GamesPage() {
   const [pods, setPods] = useState<GamePod[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'lobby' | 'active' | 'completed'>('all');
+  const router = useRouter();
 
   useEffect(() => {
+    if (!isAuthenticated()) {
+      router.push('/admin/login');
+      return;
+    }
     fetchPods();
-  }, []);
+  }, [router]);
 
   async function fetchPods() {
     try {
-      const res = await fetch('/api/admin/pods');
+      const res = await adminFetch('/api/admin/pods');
       if (res.ok) {
         const data = await res.json();
         setPods(data.pods || []);
@@ -109,7 +116,10 @@ export default function GamesPage() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {loading
           ? Array.from({ length: 6 }).map((_, i) => (
-              <div key={i} className="bg-gray-800 rounded-xl p-6 border border-gray-700 animate-pulse">
+              <div
+                key={i}
+                className="bg-gray-800 rounded-xl p-6 border border-gray-700 animate-pulse"
+              >
                 <div className="h-6 w-24 bg-gray-700 rounded mb-4" />
                 <div className="h-4 w-16 bg-gray-700 rounded" />
               </div>
@@ -141,7 +151,9 @@ export default function GamesPage() {
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between">
                     <span className="text-gray-400">Phase</span>
-                    <span className="text-white">{phaseLabels[pod.current_phase] || pod.current_phase}</span>
+                    <span className="text-white">
+                      {phaseLabels[pod.current_phase] || pod.current_phase}
+                    </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-400">Round</span>
@@ -155,6 +167,7 @@ export default function GamesPage() {
                     <span className="text-gray-400">Entry Fee</span>
                     <span className="text-white">{(pod.entry_fee / 1e9).toFixed(3)} SOL</span>
                   </div>
+
                   {pod.status === 'active' && (
                     <div className="flex justify-between">
                       <span className="text-gray-400">Boil</span>
@@ -163,6 +176,7 @@ export default function GamesPage() {
                       </span>
                     </div>
                   )}
+
                   {pod.winner_side && (
                     <div className="flex justify-between pt-2 border-t border-gray-700 mt-2">
                       <span className="text-gray-400">Winner</span>
