@@ -2,10 +2,14 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { requireAdminAuth } from '@/lib/api/admin-auth';
 
+// Hardcoded fallback for Edge runtime where process.env is not available
+const SUPABASE_URL = 'https://izwbrcsljuidwhxyupzq.supabase.co';
+const SUPABASE_SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml6d2JyY3NsanVpZHdoeHl1cHpxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MDE5OTMyMCwiZXhwIjoyMDg1Nzc1MzIwfQ.NJ-kbd88qrKdCP16AL3pmcRqzK_Vq0BIqaB_S4FfdIM';
+
 // Create Supabase client inside function for Edge runtime compatibility
 function getSupabase() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || '';
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || SUPABASE_SERVICE_KEY;
   if (!url || !key) throw new Error('Supabase env vars not set');
   return createClient(url, key);
 }
@@ -155,8 +159,9 @@ export async function GET(
         post_id: moltbookPostId,
       },
     });
-  } catch (err) {
+  } catch (err: unknown) {
+    const errorMsg = err instanceof Error ? err.message : 'Unknown error';
     console.error('Admin pod detail error:', err);
-    return NextResponse.json({ error: 'Failed to fetch pod details' }, { status: 500 });
+    return NextResponse.json({ error: 'Failed to fetch pod details', details: errorMsg }, { status: 500 });
   }
 }
