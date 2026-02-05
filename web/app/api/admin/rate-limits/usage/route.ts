@@ -5,9 +5,9 @@ import { requireAdminAuth } from '@/lib/api/admin-auth';
 export async function GET(req: NextRequest) {
   const authError = requireAdminAuth(req);
   if (authError) return authError;
+
   // Get recent rate limit entries (last hour) grouped by agent and endpoint
   const oneHourAgo = new Date(Date.now() - 3600000).toISOString();
-
   const { data, error } = await supabaseAdmin
     .from('rate_limits')
     .select('agent_id, endpoint, agents(name)')
@@ -19,13 +19,12 @@ export async function GET(req: NextRequest) {
 
   // Group by agent + endpoint
   const grouped: Record<string, { agent_id: string; agent_name: string; endpoint: string; count: number }> = {};
-
   for (const entry of data) {
     const key = `${entry.agent_id}-${entry.endpoint}`;
     if (!grouped[key]) {
       grouped[key] = {
         agent_id: entry.agent_id,
-        agent_name: (entry.agents as Record<string, unknown>)?.name as string || 'Unknown',
+        agent_name: ((entry.agents as unknown as { name: string }[])?.[0]?.name) || 'Unknown',
         endpoint: entry.endpoint,
         count: 0,
       };

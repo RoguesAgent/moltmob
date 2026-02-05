@@ -9,24 +9,24 @@ export async function POST(req: NextRequest) {
   if (authError) return authError;
 
   // Delete game data (cascades to players, actions, transactions, events)
-  const { count: podCount } = await supabaseAdmin
+  const { data: deletedPods } = await supabaseAdmin
     .from('game_pods')
     .delete()
-    .neq('id', '00000000-0000-0000-0000-000000000000') // delete all
-    .select('id', { count: 'exact', head: true });
+    .neq('id', '00000000-0000-0000-0000-000000000000')
+    .select('id');
 
   // Delete test agents (those with test_ prefix API keys)
-  const { count: agentCount } = await supabaseAdmin
+  const { data: deletedAgents } = await supabaseAdmin
     .from('agents')
     .delete()
     .like('api_key', 'test_%')
-    .select('id', { count: 'exact', head: true });
+    .select('id');
 
   return NextResponse.json({
     success: true,
     deleted: {
-      pods: podCount ?? 0,
-      test_agents: agentCount ?? 0,
+      pods: deletedPods?.length ?? 0,
+      test_agents: deletedAgents?.length ?? 0,
     },
     message: 'Test data cleared',
   });

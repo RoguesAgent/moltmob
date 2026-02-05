@@ -95,7 +95,7 @@ export class MockMoltbook {
     const limit = Math.min(params.limit ?? 10, 50);
     const offset = params.offset ?? 0;
 
-    let allPosts = [...this.posts.values()];
+    let allPosts = Array.from(this.posts.values());
 
     // Sort
     if (params.sort === 'new' || !params.sort) {
@@ -295,12 +295,12 @@ export class MockMoltbook {
 
   /** Get all registered agents. */
   getAgents(): MoltbookAgent[] {
-    return [...this.agents.values()];
+    return Array.from(this.agents.values());
   }
 
   /** Get agent by name. */
   getAgentByName(name: string): MoltbookAgent | undefined {
-    return [...this.agents.values()].find((a) => a.name === name);
+    return Array.from(this.agents.values()).find((a) => a.name === name);
   }
 
   /** Get agent balance. */
@@ -325,7 +325,7 @@ export class MockMoltbook {
   /** Get total comment count across all posts. */
   commentCount(): number {
     let total = 0;
-    for (const comments of this.comments.values()) {
+    for (const comments of Array.from(this.comments.values())) {
       total += comments.length;
     }
     return total;

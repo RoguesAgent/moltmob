@@ -48,7 +48,7 @@ export interface VoteInput {
   target_id: string | null; // null = abstain
 }
 
-interface OrchestratorState {
+export interface OrchestratorState {
   moltsRemaining: number;
   shellguardUsed: boolean; // Shellguard can only protect 1x per game
   immunePlayerIds: Set<string>; // players immune to night pinch (from molt upgrade)
