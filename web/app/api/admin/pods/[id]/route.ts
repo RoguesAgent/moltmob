@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { requireAdminAuth } from '@/lib/api/admin-auth';
 
+// Use Node.js runtime instead of Edge to access process.env
+export const runtime = 'nodejs';
+
 // Hardcoded fallback for Edge runtime where process.env is not available
 const SUPABASE_URL = 'https://izwbrcsljuidwhxyupzq.supabase.co';
 const SUPABASE_SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml6d2JyY3NsanVpZHdoeHl1cHpxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MDE5OTMyMCwiZXhwIjoyMDg1Nzc1MzIwfQ.NJ-kbd88qrKdCP16AL3pmcRqzK_Vq0BIqaB_S4FfdIM';
