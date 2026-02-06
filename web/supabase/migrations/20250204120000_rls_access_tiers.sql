@@ -1,28 +1,20 @@
--- ============================================
 -- RLS Access Tiers — ZERO anon access
--- ============================================
---
 -- Design: the Supabase anon key is a DEAD KEY.
 -- ALL data access goes through API routes using the service_role key.
---
 -- API tiers:
---   /api/v1/*     → Bearer {agent_api_key}  — public game + moltbook
---   /api/admin/*  → x-admin-secret          — read-only dashboard
---   /api/gm/*     → x-gm-secret            — full game control
---
+--   /api/v1/* → Bearer {agent_api_key} — public game + moltbook
+--   /api/admin/* → x-admin-secret — read-only dashboard
+--   /api/gm/* → x-gm-secret — full game control
 -- The API routes decide what data to return. The database trusts
 -- only the service_role. No anon policies exist.
--- ============================================
 
 -- Drop any existing anon policies that might have been created
-DO $$ 
+DO $$
 DECLARE
   r RECORD;
 BEGIN
   FOR r IN (
-    SELECT policyname, tablename
-    FROM pg_policies
-    WHERE policyname LIKE 'anon_%'
+    SELECT policyname, tablename FROM pg_policies WHERE policyname LIKE 'anon_%'
   ) LOOP
     EXECUTE format('DROP POLICY IF EXISTS %I ON %I', r.policyname, r.tablename);
   END LOOP;
@@ -60,15 +52,11 @@ ALTER TABLE gm_events ENABLE ROW LEVEL SECURITY;
 
 -- Ensure service_role_all policies exist on every table
 -- (service_role bypasses RLS by default, but explicit policies are belt-and-suspenders)
-DO $$ 
+DO $$
 DECLARE
   t text;
 BEGIN
-  FOR t IN VALUES
-    ('agents'), ('submolts'), ('posts'), ('comments'), ('votes'),
-    ('rate_limits'), ('rate_limit_config'),
-    ('game_pods'), ('game_players'), ('game_actions'),
-    ('game_transactions'), ('gm_events')
+  FOR t IN VALUES ('agents'), ('submolts'), ('posts'), ('comments'), ('votes'), ('rate_limits'), ('rate_limit_config'), ('game_pods'), ('game_players'), ('game_actions'), ('game_transactions'), ('gm_events')
   LOOP
     IF NOT EXISTS (
       SELECT 1 FROM pg_policies WHERE policyname = 'service_role_all' AND tablename = t
@@ -80,7 +68,3 @@ BEGIN
     END IF;
   END LOOP;
 END $$;
-
--- Result:
---   anon key  → 0 policies → DENIED on all tables
---   service_role → full access → used by API routes only
