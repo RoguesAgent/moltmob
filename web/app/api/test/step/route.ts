@@ -97,7 +97,7 @@ export async function POST(req: NextRequest) {
 
         actions = alive.map((p) => {
           if (p.id === clawboss?.id) return { player_id: p.id, action: 'pinch' as const, target_id: target?.id ?? null };
-          return { player_id: p.id, action: 'dummy' as const, target_id: null };
+          return { player_id: p.id, action: 'scuttle' as const, target_id: null };
         });
       }
 

@@ -5,14 +5,10 @@ import { requireAdminAuth } from '@/lib/api/admin-auth';
 // Use Node.js runtime instead of Edge to access process.env
 export const runtime = 'nodejs';
 
-// Hardcoded fallback for Edge runtime where process.env is not available
-const SUPABASE_URL = 'https://izwbrcsljuidwhxyupzq.supabase.co';
-const SUPABASE_SERVICE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml6d2JyY3NsanVpZHdoeHl1cHpxIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MDE5OTMyMCwiZXhwIjoyMDg1Nzc1MzIwfQ.NJ-kbd88qrKdCP16AL3pmcRqzK_Vq0BIqaB_S4FfdIM';
-
 // Create Supabase client inside function for Edge runtime compatibility
 function getSupabase() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || SUPABASE_SERVICE_KEY;
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   if (!url || !key) throw new Error('Supabase env vars not set');
   return createClient(url, key);
 }
@@ -44,6 +40,7 @@ export async function GET(
       console.error('[Admin Pod API] Pod query error:', podError);
       return NextResponse.json({ error: 'Pod not found' }, { status: 404 });
     }
+
     if (!pod) {
       console.error('[Admin Pod API] Pod not found for id:', podId);
       return NextResponse.json({ error: 'Pod not found' }, { status: 404 });
@@ -66,19 +63,19 @@ export async function GET(
     // Get agent details separately for each player
     const agentIds = players?.map(p => p.agent_id).filter(Boolean) || [];
     let agentsMap: Record<string, { id: string; name: string; wallet_pubkey: string }> = {};
-    
+
     if (agentIds.length > 0) {
       console.log('[Admin Pod API] Query 2b: Fetching agents...');
       const { data: agents, error: agentsError } = await supabaseAdmin
         .from('agents')
         .select('id, name, wallet_pubkey')
         .in('id', agentIds);
-      
+
       if (agentsError) {
         console.error('[Admin Pod API] Agents query error:', agentsError);
         throw new Error(`Agents query failed: ${agentsError.message}`);
       }
-      
+
       agentsMap = (agents || []).reduce((acc, agent) => {
         acc[agent.id] = agent;
         return acc;
@@ -123,7 +120,7 @@ export async function GET(
       .eq('event_type', 'game_start')
       .order('created_at', { ascending: false })
       .limit(1);
-    
+
     if (moltbookError) {
       console.error('[Admin Pod API] Moltbook post query error:', moltbookError);
       // Non-fatal - continue with null moltbookPostId
@@ -131,6 +128,7 @@ export async function GET(
 
     const moltbookPostId = moltbookPosts?.[0]?.details?.moltbook_post_id;
     console.log('[Admin Pod API] Moltbook post id:', moltbookPostId);
+
     console.log('[Admin Pod API] All queries successful, returning response');
 
     return NextResponse.json({
@@ -164,6 +162,9 @@ export async function GET(
   } catch (err: unknown) {
     const errorMsg = err instanceof Error ? err.message : 'Unknown error';
     console.error('Admin pod detail error:', err);
-    return NextResponse.json({ error: 'Failed to fetch pod details', details: errorMsg }, { status: 500 });
+    return NextResponse.json(
+      { error: 'Failed to fetch pod details', details: errorMsg },
+      { status: 500 }
+    );
   }
 }

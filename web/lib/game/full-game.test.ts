@@ -68,7 +68,7 @@ describe('Full Game Simulation', () => {
             const target = targets[Math.floor(Math.random() * targets.length)];
             return { player_id: p.id, action: 'pinch', target_id: target?.id ?? null };
           }
-          return { player_id: p.id, action: 'dummy', target_id: null };
+          return { player_id: p.id, action: 'scuttle', target_id: null };
         });
 
         transition = processNight(current, actions, state);

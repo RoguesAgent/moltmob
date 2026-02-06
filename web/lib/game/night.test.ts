@@ -11,11 +11,11 @@ describe('Night Resolution (6 players — no Initiate)', () => {
     const result = resolveNight(
       [
         { player_id: pid(5), action: 'pinch', target_id: pid(0) },
-        { player_id: pid(0), action: 'dummy', target_id: null },
-        { player_id: pid(1), action: 'dummy', target_id: null },
-        { player_id: pid(2), action: 'dummy', target_id: null },
-        { player_id: pid(3), action: 'dummy', target_id: null },
-        { player_id: pid(4), action: 'dummy', target_id: null },
+        { player_id: pid(0), action: 'scuttle', target_id: null },
+        { player_id: pid(1), action: 'scuttle', target_id: null },
+        { player_id: pid(2), action: 'scuttle', target_id: null },
+        { player_id: pid(3), action: 'scuttle', target_id: null },
+        { player_id: pid(4), action: 'scuttle', target_id: null },
       ],
       players
     );
@@ -31,7 +31,7 @@ describe('Night Resolution (6 players — no Initiate)', () => {
     const result = resolveNight(
       players.map((p) => ({
         player_id: p.id,
-        action: 'dummy' as const,
+        action: 'scuttle' as const,
         target_id: null,
       })),
       players
@@ -47,10 +47,10 @@ describe('Night Resolution (6 players — no Initiate)', () => {
     const result = resolveNight(
       [
         { player_id: pid(5), action: 'pinch', target_id: pid(0) },
-        { player_id: pid(1), action: 'dummy', target_id: null },
-        { player_id: pid(2), action: 'dummy', target_id: null },
-        { player_id: pid(3), action: 'dummy', target_id: null },
-        { player_id: pid(4), action: 'dummy', target_id: null },
+        { player_id: pid(1), action: 'scuttle', target_id: null },
+        { player_id: pid(2), action: 'scuttle', target_id: null },
+        { player_id: pid(3), action: 'scuttle', target_id: null },
+        { player_id: pid(4), action: 'scuttle', target_id: null },
       ],
       players
     );
@@ -69,12 +69,12 @@ describe('Night with Shellguard (8 players)', () => {
       [
         { player_id: pid(6), action: 'pinch', target_id: pid(0) },
         { player_id: pid(5), action: 'protect', target_id: pid(0) },
-        { player_id: pid(0), action: 'dummy', target_id: null },
-        { player_id: pid(1), action: 'dummy', target_id: null },
-        { player_id: pid(2), action: 'dummy', target_id: null },
-        { player_id: pid(3), action: 'dummy', target_id: null },
-        { player_id: pid(4), action: 'dummy', target_id: null },
-        { player_id: pid(7), action: 'dummy', target_id: null },
+        { player_id: pid(0), action: 'scuttle', target_id: null },
+        { player_id: pid(1), action: 'scuttle', target_id: null },
+        { player_id: pid(2), action: 'scuttle', target_id: null },
+        { player_id: pid(3), action: 'scuttle', target_id: null },
+        { player_id: pid(4), action: 'scuttle', target_id: null },
+        { player_id: pid(7), action: 'scuttle', target_id: null },
       ],
       players
     );
@@ -90,12 +90,12 @@ describe('Night with Shellguard (8 players)', () => {
       [
         { player_id: pid(6), action: 'pinch', target_id: pid(0) },
         { player_id: pid(5), action: 'protect', target_id: pid(1) },
-        { player_id: pid(0), action: 'dummy', target_id: null },
-        { player_id: pid(1), action: 'dummy', target_id: null },
-        { player_id: pid(2), action: 'dummy', target_id: null },
-        { player_id: pid(3), action: 'dummy', target_id: null },
-        { player_id: pid(4), action: 'dummy', target_id: null },
-        { player_id: pid(7), action: 'dummy', target_id: null },
+        { player_id: pid(0), action: 'scuttle', target_id: null },
+        { player_id: pid(1), action: 'scuttle', target_id: null },
+        { player_id: pid(2), action: 'scuttle', target_id: null },
+        { player_id: pid(3), action: 'scuttle', target_id: null },
+        { player_id: pid(4), action: 'scuttle', target_id: null },
+        { player_id: pid(7), action: 'scuttle', target_id: null },
       ],
       players
     );
@@ -111,12 +111,12 @@ describe('Night with Shellguard (8 players)', () => {
       [
         { player_id: pid(6), action: 'pinch', target_id: pid(0) },
         { player_id: pid(5), action: 'protect', target_id: pid(5) },
-        { player_id: pid(0), action: 'dummy', target_id: null },
-        { player_id: pid(1), action: 'dummy', target_id: null },
-        { player_id: pid(2), action: 'dummy', target_id: null },
-        { player_id: pid(3), action: 'dummy', target_id: null },
-        { player_id: pid(4), action: 'dummy', target_id: null },
-        { player_id: pid(7), action: 'dummy', target_id: null },
+        { player_id: pid(0), action: 'scuttle', target_id: null },
+        { player_id: pid(1), action: 'scuttle', target_id: null },
+        { player_id: pid(2), action: 'scuttle', target_id: null },
+        { player_id: pid(3), action: 'scuttle', target_id: null },
+        { player_id: pid(4), action: 'scuttle', target_id: null },
+        { player_id: pid(7), action: 'scuttle', target_id: null },
       ],
       players
     );
@@ -132,11 +132,11 @@ describe('Night Action Validation (6 players)', () => {
 
     const errors = validateNightActions(
       [
-        { player_id: pid(0), action: 'dummy', target_id: null },
+        { player_id: pid(0), action: 'scuttle', target_id: null },
         // pid(1) missing!
-        { player_id: pid(2), action: 'dummy', target_id: null },
-        { player_id: pid(3), action: 'dummy', target_id: null },
-        { player_id: pid(4), action: 'dummy', target_id: null },
+        { player_id: pid(2), action: 'scuttle', target_id: null },
+        { player_id: pid(3), action: 'scuttle', target_id: null },
+        { player_id: pid(4), action: 'scuttle', target_id: null },
         { player_id: pid(5), action: 'pinch', target_id: pid(0) },
       ],
       players
@@ -150,11 +150,11 @@ describe('Night Action Validation (6 players)', () => {
 
     const errors = validateNightActions(
       [
-        { player_id: pid(0), action: 'dummy', target_id: null },
-        { player_id: pid(1), action: 'dummy', target_id: null },
-        { player_id: pid(2), action: 'dummy', target_id: null },
-        { player_id: pid(3), action: 'dummy', target_id: null },
-        { player_id: pid(4), action: 'dummy', target_id: null },
+        { player_id: pid(0), action: 'scuttle', target_id: null },
+        { player_id: pid(1), action: 'scuttle', target_id: null },
+        { player_id: pid(2), action: 'scuttle', target_id: null },
+        { player_id: pid(3), action: 'scuttle', target_id: null },
+        { player_id: pid(4), action: 'scuttle', target_id: null },
         { player_id: pid(5), action: 'pinch', target_id: pid(1) },
       ],
       players
@@ -168,11 +168,11 @@ describe('Night Action Validation (6 players)', () => {
 
     const errors = validateNightActions(
       [
-        { player_id: pid(0), action: 'dummy', target_id: null },
-        { player_id: pid(1), action: 'dummy', target_id: null },
-        { player_id: pid(2), action: 'dummy', target_id: null },
-        { player_id: pid(3), action: 'dummy', target_id: null },
-        { player_id: pid(4), action: 'dummy', target_id: null },
+        { player_id: pid(0), action: 'scuttle', target_id: null },
+        { player_id: pid(1), action: 'scuttle', target_id: null },
+        { player_id: pid(2), action: 'scuttle', target_id: null },
+        { player_id: pid(3), action: 'scuttle', target_id: null },
+        { player_id: pid(4), action: 'scuttle', target_id: null },
         { player_id: pid(5), action: 'pinch', target_id: pid(5) },
       ],
       players
@@ -186,11 +186,11 @@ describe('Night Action Validation (6 players)', () => {
 
     const errors = validateNightActions(
       [
-        { player_id: pid(0), action: 'dummy', target_id: null },
-        { player_id: pid(1), action: 'dummy', target_id: null },
-        { player_id: pid(2), action: 'dummy', target_id: null },
-        { player_id: pid(3), action: 'dummy', target_id: null },
-        { player_id: pid(4), action: 'dummy', target_id: null },
+        { player_id: pid(0), action: 'scuttle', target_id: null },
+        { player_id: pid(1), action: 'scuttle', target_id: null },
+        { player_id: pid(2), action: 'scuttle', target_id: null },
+        { player_id: pid(3), action: 'scuttle', target_id: null },
+        { player_id: pid(4), action: 'scuttle', target_id: null },
         { player_id: pid(5), action: 'pinch', target_id: pid(0) },
       ],
       players

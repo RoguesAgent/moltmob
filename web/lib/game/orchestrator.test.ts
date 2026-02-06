@@ -72,7 +72,7 @@ describe('processNight', () => {
       .filter((p) => p.status === 'alive')
       .map((p) => {
         if (p.id === clawboss.id) return { player_id: p.id, action: 'pinch' as const, target_id: target.id };
-        return { player_id: p.id, action: 'dummy' as const, target_id: null };
+        return { player_id: p.id, action: 'scuttle' as const, target_id: null };
       });
 
     const result = processNight(started, actions, state);
@@ -97,7 +97,7 @@ describe('processNight', () => {
       .map((p) => {
         if (p.id === clawboss.id) return { player_id: p.id, action: 'pinch' as const, target_id: target.id };
         if (p.id === shellguard.id) return { player_id: p.id, action: 'protect' as const, target_id: target.id };
-        return { player_id: p.id, action: 'dummy' as const, target_id: null };
+        return { player_id: p.id, action: 'scuttle' as const, target_id: null };
       });
 
     const result = processNight(started, actions, state);
@@ -132,7 +132,7 @@ describe('processNight', () => {
       .filter((p) => p.status === 'alive')
       .map((p) => {
         if (p.id === clawboss.id) return { player_id: p.id, action: 'pinch' as const, target_id: targetKrill.id };
-        return { player_id: p.id, action: 'dummy' as const, target_id: null };
+        return { player_id: p.id, action: 'scuttle' as const, target_id: null };
       });
 
     const result = processNight(started, actions, state);
@@ -299,7 +299,7 @@ describe('Full game flow', () => {
       .filter((p) => p.status === 'alive')
       .map((p) => {
         if (p.id === clawboss.id) return { player_id: p.id, action: 'pinch' as const, target_id: krill1.id };
-        return { player_id: p.id, action: 'dummy' as const, target_id: null };
+        return { player_id: p.id, action: 'scuttle' as const, target_id: null };
       });
 
     const night1 = processNight(game, nightActions, state);
@@ -340,7 +340,7 @@ describe('Full game flow', () => {
       .filter((p) => p.status === 'alive')
       .map((p) => {
         if (p.id === clawboss.id) return { player_id: p.id, action: 'pinch' as const, target_id: krills[0].id };
-        return { player_id: p.id, action: 'dummy' as const, target_id: null };
+        return { player_id: p.id, action: 'scuttle' as const, target_id: null };
       });
 
     let nightResult = processNight(current, nightActions, state);
@@ -361,7 +361,7 @@ describe('Full game flow', () => {
       .filter((p) => p.status === 'alive')
       .map((p) => {
         if (p.id === clawboss.id) return { player_id: p.id, action: 'pinch' as const, target_id: krills[1].id };
-        return { player_id: p.id, action: 'dummy' as const, target_id: null };
+        return { player_id: p.id, action: 'scuttle' as const, target_id: null };
       });
 
     nightResult = processNight(current, nightActions, state);
@@ -382,7 +382,7 @@ describe('Full game flow', () => {
         .filter((p) => p.status === 'alive')
         .map((p) => {
           if (p.id === clawboss.id) return { player_id: p.id, action: 'pinch' as const, target_id: krills[2].id };
-          return { player_id: p.id, action: 'dummy' as const, target_id: null };
+          return { player_id: p.id, action: 'scuttle' as const, target_id: null };
         });
 
       nightResult = processNight(current, nightActions, state);
@@ -401,7 +401,7 @@ describe('Full game flow', () => {
           .filter((p) => p.status === 'alive')
           .map((p) => {
             if (p.id === clawboss.id) return { player_id: p.id, action: 'pinch' as const, target_id: krills[3].id };
-            return { player_id: p.id, action: 'dummy' as const, target_id: null };
+            return { player_id: p.id, action: 'scuttle' as const, target_id: null };
           });
 
         nightResult = processNight(current, nightActions, state);

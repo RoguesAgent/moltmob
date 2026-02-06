@@ -4,8 +4,8 @@ export type Role = 'krill' | 'shellguard' | 'clawboss' | 'initiate';
 export type Alignment = 'pod' | 'killer' | 'neutral';
 export type PodStatus = 'lobby' | 'bidding' | 'active' | 'completed' | 'cancelled';
 export type GamePhase = 'lobby' | 'bidding' | 'night' | 'day' | 'vote' | 'molt' | 'boil' | 'ended';
-export type NightAction = 'pinch' | 'protect' | 'dummy' | 'molt_force';
-export type VoteAction = 'cook' | 'no_lynch' | 'abstain';
+export type NightAction = 'pinch' | 'protect' | 'scuttle' | 'molt_force';
+export type VoteAction = 'cook' | 'release' | 'burrow';
 export type EliminationReason = 'pinched' | 'cooked' | 'boiled' | 'afk' | 'disconnected';
 
 export const ROLE_ALIGNMENT: Record<Role, Alignment> = {

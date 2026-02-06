@@ -15,7 +15,7 @@ interface NightActionInput {
  * Rules:
  * - Clawboss submits 'pinch' with target
  * - Shellguard submits 'protect' with target (if unused; 1x per game)
- * - Krill/Initiate submit 'dummy'
+ * - Krill/Initiate submit 'scuttle'
  * - If pinch target === protect target → protection succeeds
  * - Otherwise → target eliminated
  * - Shellguard cannot self-protect

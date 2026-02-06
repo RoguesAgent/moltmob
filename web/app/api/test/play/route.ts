@@ -81,7 +81,7 @@ export async function POST(req: NextRequest) {
           const protectTarget = targets[Math.floor(Math.random() * targets.length)];
           return { player_id: p.id, action: 'protect' as const, target_id: protectTarget?.id ?? null };
         }
-        return { player_id: p.id, action: 'dummy' as const, target_id: null };
+        return { player_id: p.id, action: 'scuttle' as const, target_id: null };
       });
 
       transition = processNight(current, actions, state);

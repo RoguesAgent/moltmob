@@ -20,3 +20,4 @@ out/
 
 # Utility scripts with db access (contain sensitive creds logic)
 reset-db.mjs
+web/scripts/reset-db.ts

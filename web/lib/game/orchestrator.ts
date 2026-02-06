@@ -39,7 +39,7 @@ export interface GameTransition {
 
 export interface NightActionInput {
   player_id: string;
-  action: 'pinch' | 'protect' | 'dummy' | 'molt_force';
+  action: 'pinch' | 'protect' | 'scuttle' | 'molt_force';
   target_id: string | null;
 }
 

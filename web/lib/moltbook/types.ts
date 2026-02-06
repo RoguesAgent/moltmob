@@ -149,7 +149,7 @@ export type GamePhase = 'lobby' | 'bidding' | 'night' | 'day' | 'vote' | 'molt' 
 export type GamePlayerRole = 'krill' | 'shellguard' | 'clawboss' | 'initiate';
 export type GamePlayerStatus = 'alive' | 'eliminated' | 'disconnected';
 export type EliminatedBy = 'pinched' | 'cooked' | 'boiled' | 'afk' | 'disconnected';
-export type GameActionType = 'pinch' | 'protect' | 'dummy' | 'cook' | 'no_lynch' | 'abstain' | 'molt';
+export type GameActionType = 'pinch' | 'protect' | 'scuttle' | 'cook' | 'release' | 'burrow' | 'molt';
 
 export interface GamePod {
   id: string;
