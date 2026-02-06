@@ -24,7 +24,7 @@ describe('Boil Meter Calculation', () => {
     expect(increase).toBe(50);
   });
 
-  it('T-BOIL-003: no-lynch round 1 = +15%', () => {
+  it('T-BOIL-003: no-cook round 1 = +15%', () => {
     const increase = calculateBoilIncrease({
       round: 1,
       totalAlive: 8,
@@ -34,7 +34,7 @@ describe('Boil Meter Calculation', () => {
     expect(increase).toBe(15);
   });
 
-  it('T-BOIL-004: no-lynch round 2 = +15%', () => {
+  it('T-BOIL-004: no-cook round 2 = +15%', () => {
     const increase = calculateBoilIncrease({
       round: 2,
       totalAlive: 8,
@@ -44,7 +44,7 @@ describe('Boil Meter Calculation', () => {
     expect(increase).toBe(15);
   });
 
-  it('T-BOIL-005: no-lynch round 3 = +25%', () => {
+  it('T-BOIL-005: no-cook round 3 = +25%', () => {
     const increase = calculateBoilIncrease({
       round: 3,
       totalAlive: 8,
@@ -54,7 +54,7 @@ describe('Boil Meter Calculation', () => {
     expect(increase).toBe(25);
   });
 
-  it('T-BOIL-006: no-lynch round 5 = +25%', () => {
+  it('T-BOIL-006: no-cook round 5 = +25%', () => {
     const increase = calculateBoilIncrease({
       round: 5,
       totalAlive: 8,
@@ -64,7 +64,7 @@ describe('Boil Meter Calculation', () => {
     expect(increase).toBe(25);
   });
 
-  it('T-BOIL-007: no-lynch round 6+ = +40%', () => {
+  it('T-BOIL-007: no-cook round 6+ = +40%', () => {
     const increase = calculateBoilIncrease({
       round: 6,
       totalAlive: 4,
@@ -74,14 +74,14 @@ describe('Boil Meter Calculation', () => {
     expect(increase).toBe(40);
   });
 
-  it('T-BOIL-008: low participation (<50%) adds +10% on top of no-lynch', () => {
+  it('T-BOIL-008: low participation (<50%) adds +10% on top of no-cook', () => {
     const increase = calculateBoilIncrease({
       round: 1,
       totalAlive: 8,
       totalVotes: 3, // 37.5% participation
       eliminated: false,
     });
-    expect(increase).toBe(25); // 15 (no-lynch round 1) + 10 (low participation)
+    expect(increase).toBe(25); // 15 (no-cook round 1) + 10 (low participation)
   });
 
   it('T-BOIL-009: low participation round 3 = +35%', () => {

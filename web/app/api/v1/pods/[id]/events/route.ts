@@ -45,7 +45,7 @@ export async function GET(
   const PUBLIC_EVENT_TYPES = [
     'game_start', 'game_end',
     'phase_change',
-    'vote_result', 'elimination', 'no_lynch',
+    'vote_result', 'elimination', 'no_cook',
     'boil_increase', 'boil_triggered',
     'molt_triggered', 'molt_result',
     'afk_warning', 'afk_kick',

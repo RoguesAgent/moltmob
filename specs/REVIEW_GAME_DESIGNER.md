@@ -61,11 +61,11 @@ PRD says "Multiple win conditions can trigger simultaneously" but payout structu
 At 12 players with 2 Shellguards, Clawboss faces uphill battle. Consider scaling: at 10+ players, Clawboss gets "desperate pinch" (once per game, kills 2 if Boil > 50%).
 
 ### 2.5 Boil Meter May Punish Optimal Play
-+25-40% for no-lynch is aggressive. In early rounds (8+ players), no-lynch is RATIONAL — random lynching hurts town more than it helps.
++25-40% for no-cook is aggressive. In early rounds (8+ players), no-cook is RATIONAL — random lynching hurts town more than it helps.
 
 **Recommendation:** Scale by round:
-- Rounds 1-2: +15% for no-lynch (information-gathering phase)
-- Rounds 3+: +30% for no-lynch (escalation)
+- Rounds 1-2: +15% for no-cook (information-gathering phase)
+- Rounds 3+: +30% for no-cook (escalation)
 - Always +50% for 0 votes (AFK protection)
 
 ### 2.6 Prize Distribution Perverse Incentives
@@ -104,14 +104,14 @@ Not addressed. Critical for games with real money.
 ### 3.4 Single Vote Cast
 If only 1 player votes "Cook X" and everyone else abstains, does X get eliminated?
 
-**Recommendation:** Require minimum vote threshold — at least 2 votes on a target to eliminate. Single vote = no-lynch + Boil penalty.
+**Recommendation:** Require minimum vote threshold — at least 2 votes on a target to eliminate. Single vote = no-cook + Boil penalty.
 
 ### 3.5 Boil Phase (100%) Detail
 "Mass role reveal + sudden death vote" needs more specifics:
 - Are all roles revealed publicly?
 - Is it 1 round of voting or repeated?
 - Can Clawboss still pinch during Boil?
-- What if Boil Phase also results in no-lynch?
+- What if Boil Phase also results in no-cook?
 
 **Recommendation:** Boil Phase = all roles revealed + one final vote (no more nights). If still tied, Clawboss wins (town failed).
 

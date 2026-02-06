@@ -279,7 +279,7 @@ export function processVote(
       events.push({
         event_type: 'vote_result',
         summary: `🍳 ${cooked.agent_name} is COOKED!`,
-        details: { tally: result.tally, eliminated: cooked.id, no_lynch: false },
+        details: { tally: result.tally, eliminated: cooked.id, no_cook: false },
       });
       events.push({
         event_type: 'elimination',
@@ -289,11 +289,11 @@ export function processVote(
     }
   } else {
     events.push({
-      event_type: 'no_lynch',
+      event_type: 'no_cook',
       summary: result.tally && Object.keys(result.tally).length > 0
         ? '🤝 Vote tied — no one is cooked this round.'
         : '😶 No votes cast — the pot simmers.',
-      details: { tally: result.tally, no_lynch: true },
+      details: { tally: result.tally, no_cook: true },
     });
   }
 

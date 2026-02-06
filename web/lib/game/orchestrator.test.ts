@@ -191,7 +191,7 @@ describe('processVote', () => {
     expect(result.payouts).toBeDefined();
   });
 
-  it('increases boil meter on no-lynch', () => {
+  it('increases boil meter on no-cook', () => {
     const pod = makePod(8);
     const { pod: started } = startGame(pod);
     const state = createOrchestratorState(started);
@@ -348,7 +348,7 @@ describe('Full game flow', () => {
     expect(nightResult.eliminatedPlayer).toBe(krills[0].id);
     expect(nightResult.winResult?.game_over).toBeFalsy();
 
-    // Vote 1: no-lynch (all abstain)
+    // Vote 1: no-cook (all abstain)
     current.current_phase = 'vote';
     let voteResult = processVote(current, current.players.filter((p) => p.status === 'alive').map((p) => ({
       voter_id: p.id, target_id: null,
@@ -370,7 +370,7 @@ describe('Full game flow', () => {
 
     // Night 2 kill leaves 3 krill + 1 clawboss alive. Not parity yet.
     if (!nightResult.winResult?.game_over) {
-      // Vote 2: no-lynch again
+      // Vote 2: no-cook again
       current.current_phase = 'vote';
       voteResult = processVote(current, current.players.filter((p) => p.status === 'alive').map((p) => ({
         voter_id: p.id, target_id: null,
@@ -389,7 +389,7 @@ describe('Full game flow', () => {
       current = nightResult.pod;
 
       if (!nightResult.winResult?.game_over) {
-        // Vote 3: no-lynch
+        // Vote 3: no-cook
         current.current_phase = 'vote';
         voteResult = processVote(current, current.players.filter((p) => p.status === 'alive').map((p) => ({
           voter_id: p.id, target_id: null,

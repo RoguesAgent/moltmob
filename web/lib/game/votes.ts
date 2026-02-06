@@ -5,7 +5,7 @@ import { VoteResult } from './types';
 
 interface VoteInput {
   voter_id: string;
-  target_id: string | null; // null = abstain/no_lynch
+  target_id: string | null; // null = release (no-cook)
 }
 
 /**
@@ -13,9 +13,9 @@ interface VoteInput {
  *
  * Rules:
  * - Majority vote eliminates target
- * - Tie = no-lynch
+ * - Tie = no-cook
  * - Minimum 2 votes on a target to eliminate (per Game Design review)
- * - 0 votes = no-lynch + severe boil penalty
+ * - 0 votes = no-cook + severe boil penalty
  * - Eliminated players' votes are ignored (caller should filter)
  */
 export function tallyVotes(
@@ -27,7 +27,7 @@ export function tallyVotes(
   let totalCast = 0;
 
   for (const vote of votes) {
-    if (vote.target_id === null) continue; // abstain
+    if (vote.target_id === null) continue; // release (no-cook)
     totalCast++;
     if (!tally[vote.target_id]) {
       tally[vote.target_id] = [];
@@ -51,19 +51,18 @@ export function tallyVotes(
   }
 
   // Determine outcome
-  const noLynch =
-    totalCast === 0 || // nobody voted
-    isTied || // tie
-    maxVotes < 2; // below minimum threshold
+  const noCook = totalCast === 0 || // nobody voted
+                 isTied ||           // tie
+                 maxVotes < 2;       // below minimum threshold
 
-  const eliminated = noLynch ? null : maxTarget;
+  const eliminated = noCook ? null : maxTarget;
 
   // Calculate boil increase
   let boilIncrease = 0;
   if (totalCast === 0) {
     boilIncrease = 50;
-  } else if (noLynch) {
-    // No-lynch scaling by round
+  } else if (noCook) {
+    // No-cook scaling by round
     if (round <= 2) boilIncrease = 15;
     else if (round <= 5) boilIncrease = 25;
     else boilIncrease = 40;
@@ -78,7 +77,7 @@ export function tallyVotes(
   return {
     tally,
     eliminated,
-    no_lynch: noLynch,
+    no_cook: noCook,
     boil_increase: boilIncrease,
   };
 }

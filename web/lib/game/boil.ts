@@ -6,7 +6,7 @@
  *
  * Rules:
  * - Normal elimination: +0%
- * - No-lynch (tie or majority abstain):
+ * - No-cook (tie or majority release): 
  *   - Rounds 1-2: +15% (per Game Design review recommendation)
  *   - Rounds 3-5: +25%
  *   - Rounds 6+: +40%
@@ -16,7 +16,7 @@
 export function calculateBoilIncrease(params: {
   round: number;
   totalAlive: number;
-  totalVotes: number; // total votes cast (including no_lynch)
+  totalVotes: number;  // total votes cast (including no_cook)
   eliminated: boolean; // whether someone was eliminated
 }): number {
   const { round, totalAlive, totalVotes, eliminated } = params;
@@ -31,18 +31,18 @@ export function calculateBoilIncrease(params: {
     return 0;
   }
 
-  // No-lynch occurred (votes were cast but no elimination)
+  // No-cook occurred (votes were cast but no elimination)
+  
   // Check participation first
   const participation = totalVotes / totalAlive;
 
-  // Low participation penalty (stacks with no-lynch)
+  // Low participation penalty (stacks with no-cook)
   let increase = 0;
-
   if (participation < 0.5) {
     increase += 10;
   }
 
-  // No-lynch scaling by round
+  // No-cook scaling by round
   if (round <= 2) {
     increase += 15;
   } else if (round <= 5) {

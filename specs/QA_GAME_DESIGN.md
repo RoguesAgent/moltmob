@@ -26,11 +26,11 @@
 **Spec change:** None for MVP. Add note in PRD §3.2.
 
 ### C5: Boil Meter Too Aggressive — **HIGH**
-**Concern:** +30% per no-lynch punishes optimal early-game play.
+**Concern:** +30% per no-cook punishes optimal early-game play.
 **Resolution:** Scale by round:
-- Rounds 1-2: +15% for no-lynch
-- Rounds 3-5: +25% for no-lynch
-- Rounds 6+: +40% for no-lynch
+- Rounds 1-2: +15% for no-cook
+- Rounds 3-5: +25% for no-cook
+- Rounds 6+: +40% for no-cook
 - Always: +50% for 0 votes, +10% for <50% participation
 **Spec change:** PRD §8 Boil Meter table.
 
@@ -62,7 +62,7 @@
 
 ### C10: Single Vote Threshold — **MEDIUM**
 **Concern:** 1 vote could eliminate a player.
-**Resolution:** Require **minimum 2 votes** on a target to eliminate. Single vote = no-lynch + Boil penalty.
+**Resolution:** Require **minimum 2 votes** on a target to eliminate. Single vote = no-cook + Boil penalty.
 **Spec change:** PRD §5 Phase 5 vote rules.
 
 ### C11: Boil Phase (100%) Detail — **HIGH**
@@ -71,7 +71,7 @@
 1. All roles revealed publicly (GM posts full role list)
 2. One final open vote (not encrypted — everyone knows roles)
 3. If vote eliminates Clawboss → Pod wins
-4. If tied or no-lynch → Clawboss wins (town failed to act)
+4. If tied or no-cook → Clawboss wins (town failed to act)
 5. No more night phases after Boil
 **Spec change:** PRD §8 Boil Phase detail.
 
