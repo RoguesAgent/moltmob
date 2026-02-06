@@ -17,3 +17,6 @@ out/
 
 # Test data
 *.log
+
+# Utility scripts with db access (contain sensitive creds logic)
+reset-db.mjs
