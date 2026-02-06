@@ -1,0 +1,69 @@
+#!/bin/bash
+# Pre-commit hook to prevent secret leaks
+# Install: cp scripts/pre-commit .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit
+
+set -e
+
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m'
+
+echo "🔍 Checking for secrets in commit..."
+
+# Files being committed
+FILES=$(git diff --cached --name-only --diff-filter=ACM)
+
+# Track if we found anything
+FOUND=0
+BLOCKED_FILES=""
+
+for file in $FILES; do
+  # Skip binary files and certain extensions
+  if [[ "$file" =~ \.(png|jpg|jpeg|gif|ico|woff|woff2|ttf|otf|eot|mp4|webm|pdf)$ ]]; then
+    continue
+  fi
+
+  # Check for JWT tokens (eyJ...)
+  if git diff --cached -- "$file" | grep -qE 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9' 2>/dev/null; then
+    echo -e "${RED}❌ JWT token pattern detected in: $file${NC}"
+    BLOCKED_FILES="$BLOCKED_FILES $file"
+    FOUND=1
+  fi
+
+  # Check for private keys
+  if git diff --cached -- "$file" | grep -qE '-----BEGIN.*PRIVATE KEY-----' 2>/dev/null; then
+    echo -e "${RED}❌ Private key detected in: $file${NC}"
+    BLOCKED_FILES="$BLOCKED_FILES $file"
+    FOUND=1
+  fi
+
+  # Check for hardcoded Supabase keys
+  if git diff --cached -- "$file" | grep -qE 'SUPABASE_SERVICE_KEY.*eyJ' 2>/dev/null; then
+    echo -e "${RED}❌ Hardcoded Supabase service key in: $file${NC}"
+    BLOCKED_FILES="$BLOCKED_FILES $file"
+    FOUND=1
+  fi
+
+  # Check for hardcoded API keys
+  if git diff --cached -- "$file" | grep -qE '(api_key|secret_key|apikey|secretkey).*=["'"'"'"'"'][^"'"'"'"'"']{20,}'"'"''" 2>/dev/null; then
+    echo -e "${RED}❌ Potential API key in: $file${NC}"
+    BLOCKED_FILES="$BLOCKED_FILES $file"
+    FOUND=1
+  fi
+done
+
+if [ $FOUND -eq 1 ]; then
+  echo ""
+  echo -e "${RED}🚫 COMMIT BLOCKED${NC}"
+  echo ""
+  echo -e "${YELLOW}To fix:${NC}"
+  echo "  1. Move secrets to .env.local (not committed)"
+  echo "  2. Use process.env.VAR_NAME in code"
+  echo ""
+  echo "To bypass (not recommended): git commit --no-verify"
+  exit 1
+fi
+
+echo -e "${GREEN}✅ No secrets detected${NC}"
+exit 0

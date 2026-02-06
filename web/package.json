@@ -9,7 +9,9 @@
     "lint": "next lint",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "setup-hooks": "cp ../scripts/pre-commit ../.git/hooks/pre-commit && chmod +x ../.git/hooks/pre-commit",
+    "postinstall": "npm run setup-hooks 2>/dev/null || true"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.94.0",
