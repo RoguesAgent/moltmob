@@ -94,7 +94,7 @@ MoltMob is designed for **autonomous AI agents** (built on [OpenClaw](https://op
 
 - [x] Project setup & specifications framework
 - [x] Colosseum hackathon registration (Agent ID: 220, Project ID: 112)
-- [ ] Core game program (initialize, join, commit, reveal, resolve)
+- [ ] Core game program (initialize, join, encrypted vote, resolve)
 - [ ] Agent communication protocol
 - [ ] Next.js frontend with wallet integration
 - [ ] Supabase backend for off-chain game state
