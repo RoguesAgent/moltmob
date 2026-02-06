@@ -1,24 +1,25 @@
-// ── Encryption Engine ──
-// PRD §5 Phase 2: Role Delivery
-// Uses @noble/curves v2 (audited by Trail of Bits) per System Architect review
-// Uses @noble/ciphers for xChaCha20-Poly1305 authenticated encryption
+// ── Encryption Engine (JavaScript/ESM version) ──
+// Duplicated here for standalone test script usage
+// See web/lib/game/encryption.ts for source of truth
 
 import { ed25519, x25519 } from '@noble/curves/ed25519.js';
 import { xchacha20poly1305 } from '@noble/ciphers/chacha.js';
 import { randomBytes } from '@noble/hashes/utils.js';
 
-const PADDED_LENGTH = 256; // Fixed plaintext length to prevent side-channel leaks
-const NONCE_LENGTH = 24;
-const TAG_LENGTH = 16; // Poly1305 authentication tag
+export const PADDED_LENGTH = 256;
+export const NONCE_LENGTH = 24;
+export const TAG_LENGTH = 16;
+export const ENCRYPTED_LENGTH = NONCE_LENGTH + PADDED_LENGTH + TAG_LENGTH;
 
-/**
- * Convert an Ed25519 public key to X25519 for encryption.
- * Uses ed25519.utils.toMontgomery (v2 API).
- * Validates the converted key is not all-zero (low-order point).
- */
-export function ed25519ToX25519Pub(ed25519PubKey: Uint8Array): Uint8Array {
+export const CONSTANTS = {
+  PADDED_LENGTH,
+  NONCE_LENGTH,
+  TAG_LENGTH,
+  ENCRYPTED_LENGTH,
+};
+
+export function ed25519ToX25519Pub(ed25519PubKey) {
   const x25519Key = ed25519.utils.toMontgomery(ed25519PubKey);
-  // Reject all-zero keys (low-order point)
   let isAllZero = true;
   for (let i = 0; i < x25519Key.length; i++) {
     if (x25519Key[i] !== 0) {
@@ -32,21 +33,14 @@ export function ed25519ToX25519Pub(ed25519PubKey: Uint8Array): Uint8Array {
   return x25519Key;
 }
 
-/**
- * Convert an Ed25519 private key to X25519 for encryption.
- * Uses ed25519.utils.toMontgomerySecret (v2 API).
- */
-export function ed25519ToX25519Priv(ed25519PrivKey: Uint8Array): Uint8Array {
+export function ed25519ToX25519Priv(ed25519PrivKey) {
   if (typeof ed25519.utils.toMontgomerySecret === 'function') {
     return ed25519.utils.toMontgomerySecret(ed25519PrivKey);
   }
   throw new Error('toMontgomerySecret not available — upgrade @noble/curves');
 }
 
-/**
- * Pad plaintext to fixed length to prevent message-length side channel.
- */
-export function padPlaintext(data: Uint8Array): Uint8Array {
+export function padPlaintext(data) {
   if (data.length > PADDED_LENGTH - 4) {
     throw new Error(`Plaintext too long: ${data.length} bytes (max ${PADDED_LENGTH - 4})`);
   }
@@ -57,10 +51,7 @@ export function padPlaintext(data: Uint8Array): Uint8Array {
   return padded;
 }
 
-/**
- * Remove padding from decrypted plaintext.
- */
-export function unpadPlaintext(padded: Uint8Array): Uint8Array {
+export function unpadPlaintext(padded) {
   if (padded.length !== PADDED_LENGTH) {
     throw new Error(`Invalid padded length: ${padded.length} (expected ${PADDED_LENGTH})`);
   }
@@ -72,24 +63,15 @@ export function unpadPlaintext(padded: Uint8Array): Uint8Array {
   return padded.slice(4, 4 + dataLength);
 }
 
-/**
- * Compute X25519 shared secret between two parties.
- */
-export function computeSharedSecret(
-  myPrivKey: Uint8Array,
-  theirPubKey: Uint8Array
-): Uint8Array {
+export function computeSharedSecret(myPrivKey, theirPubKey) {
   return x25519.getSharedSecret(myPrivKey, theirPubKey);
 }
 
-/**
- * Encrypt a message using xChaCha20-Poly1305.
- * Output: nonce (24) + ciphertext (256) + tag (16) = 296 bytes
- */
-export function encryptMessage(
-  sharedSecret: Uint8Array,
-  plaintext: Uint8Array
-): Uint8Array | null {
+export function generateNonce() {
+  return randomBytes(NONCE_LENGTH);
+}
+
+export function encryptMessage(sharedSecret, plaintext) {
   try {
     const nonce = generateNonce();
     const padded = padPlaintext(plaintext);
@@ -105,14 +87,7 @@ export function encryptMessage(
   }
 }
 
-/**
- * Decrypt a message using xChaCha20-Poly1305.
- * Input: nonce (24) + ciphertext (272) = 296 bytes
- */
-export function decryptMessage(
-  sharedSecret: Uint8Array,
-  encrypted: Uint8Array
-): Uint8Array | null {
+export function decryptMessage(sharedSecret, encrypted) {
   const expectedLength = NONCE_LENGTH + PADDED_LENGTH + TAG_LENGTH;
   if (encrypted.length !== expectedLength) {
     console.error(`Invalid encrypted length: ${encrypted.length} (expected ${expectedLength})`);
@@ -131,14 +106,7 @@ export function decryptMessage(
   }
 }
 
-/**
- * Encrypt a role assignment message for a specific player.
- */
-export function encryptRoleAssignment(
-  sharedSecret: Uint8Array,
-  role: string,
-  roleDescription: string
-): Uint8Array | null {
+export function encryptRoleAssignment(sharedSecret, role, roleDescription) {
   const message = JSON.stringify({
     type: 'role_assignment',
     role,
@@ -149,13 +117,7 @@ export function encryptRoleAssignment(
   return encryptMessage(sharedSecret, plaintext);
 }
 
-/**
- * Decrypt a role assignment message.
- */
-export function decryptRoleAssignment(
-  sharedSecret: Uint8Array,
-  encrypted: Uint8Array
-): { role: string; description: string } | null {
+export function decryptRoleAssignment(sharedSecret, encrypted) {
   const decrypted = decryptMessage(sharedSecret, encrypted);
   if (!decrypted) return null;
 
@@ -169,18 +131,3 @@ export function decryptRoleAssignment(
     return null;
   }
 }
-
-/**
- * Generate a nonce for encryption.
- */
-export function generateNonce(): Uint8Array {
-  return randomBytes(NONCE_LENGTH);
-}
-
-// Re-export constants for testing
-export const CONSTANTS = {
-  PADDED_LENGTH,
-  NONCE_LENGTH,
-  TAG_LENGTH,
-  ENCRYPTED_LENGTH: NONCE_LENGTH + PADDED_LENGTH + TAG_LENGTH,
-};
