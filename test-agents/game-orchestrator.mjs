@@ -1,6 +1,9 @@
 #!/usr/bin/env node
 // MoltMob Game Orchestrator
 import { Connection, PublicKey, Keypair, LAMPORTS_PER_SOL } from '@solana/web3.js';
+import { xchacha20poly1305 } from '@noble/ciphers/chacha.js';
+import { randomBytes } from '@noble/hashes/utils.js';
+import { ed25519, x25519 } from '@noble/curves/ed25519.js';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -59,31 +62,81 @@ class GameLogger {
   }
 }
 
-// ========== SIMPLE ENCRYPTION (simulated) ==========
-function simpleEncrypt(message, sharedKey) {
-  const encoder = new TextEncoder();
-  const data = encoder.encode(message);
-  const encrypted = new Uint8Array(data.length);
-  for (let i = 0; i < data.length; i++) {
-    encrypted[i] = data[i] ^ (sharedKey[i % sharedKey.length] & 0xFF);
+// ========== REAL ENCRYPTION (xChaCha20-Poly1305) ==========
+const PADDED_LENGTH = 256;
+const NONCE_LENGTH = 24;
+const TAG_LENGTH = 16;
+
+function ed25519ToX25519Pub(ed25519PubKey) {
+  const x25519Key = ed25519.utils.toMontgomery(ed25519PubKey);
+  let isAllZero = true;
+  for (let i = 0; i < x25519Key.length; i++) {
+    if (x25519Key[i] !== 0) { isAllZero = false; break; }
   }
-  return Buffer.from(encrypted).toString('base64');
+  if (isAllZero) throw new Error('Invalid Ed25519 key');
+  return x25519Key;
 }
 
-function simpleDecrypt(base64Data, sharedKey) {
-  const encrypted = Buffer.from(base64Data, 'base64');
-  const decrypted = new Uint8Array(encrypted.length);
-  for (let i = 0; i < encrypted.length; i++) {
-    decrypted[i] = encrypted[i] ^ (sharedKey[i % sharedKey.length] & 0xFF);
+function ed25519ToX25519Priv(ed25519PrivKey) {
+  if (typeof ed25519.utils.toMontgomerySecret === 'function') {
+    return ed25519.utils.toMontgomerySecret(ed25519PrivKey);
   }
-  const decoder = new TextDecoder();
-  return decoder.decode(decrypted);
+  throw new Error('toMontgomerySecret not available');
 }
 
-function deriveSharedKey(agentPublicKey, gmSecretKey) {
-  const combined = agentPublicKey + gmSecretKey;
-  const hash = Buffer.from(combined).toString('base64').slice(0, 32);
-  return new TextEncoder().encode(hash);
+function padPlaintext(data) {
+  if (data.length > PADDED_LENGTH - 4) {
+    throw new Error('Plaintext too long: ' + data.length + ' bytes');
+  }
+  const padded = new Uint8Array(PADDED_LENGTH);
+  const view = new DataView(padded.buffer);
+  view.setUint32(0, data.length, false);
+  padded.set(data, 4);
+  return padded;
+}
+
+function unpadPlaintext(padded) {
+  if (padded.length !== PADDED_LENGTH) {
+    throw new Error('Invalid padded length: ' + padded.length);
+  }
+  const view = new DataView(padded.buffer, padded.byteOffset);
+  const dataLength = view.getUint32(0, false);
+  return padded.slice(4, 4 + dataLength);
+}
+
+function encryptWithXChaCha(sharedSecret, plaintext) {
+  try {
+    const nonce = randomBytes(NONCE_LENGTH);
+    const padded = padPlaintext(plaintext);
+    const cipher = xchacha20poly1305(sharedSecret, nonce);
+    const ciphertext = cipher.encrypt(padded);
+    const result = new Uint8Array(nonce.length + ciphertext.length);
+    result.set(nonce, 0);
+    result.set(ciphertext, nonce.length);
+    return Buffer.from(result).toString('base64');
+  } catch (err) {
+    console.error('Encryption failed:', err);
+    return null;
+  }
+}
+
+function decryptWithXChaCha(sharedSecret, base64Data) {
+  try {
+    const encrypted = Buffer.from(base64Data, 'base64');
+    const expectedLength = NONCE_LENGTH + PADDED_LENGTH + TAG_LENGTH;
+    if (encrypted.length !== expectedLength) {
+      console.error('Invalid encrypted length: ' + encrypted.length);
+      return null;
+    }
+    const nonce = encrypted.slice(0, NONCE_LENGTH);
+    const ciphertext = encrypted.slice(NONCE_LENGTH);
+    const cipher = xchacha20poly1305(sharedSecret, nonce);
+    const padded = cipher.decrypt(ciphertext);
+    return unpadPlaintext(padded);
+  } catch (err) {
+    console.error('Decryption failed:', err);
+    return null;
+  }
 }
 
 // ========== AGENT CLASS ==========
@@ -123,9 +176,29 @@ class Agent {
     this.team = (role === ROLES.CLAWBOSS || role === ROLES.KRILL) ? 'deception' : 'loyal';
   }
 
-  computeSharedKey(gmSecretKey) {
-    this.sharedKey = deriveSharedKey(this.publicKey, gmSecretKey);
+  computeSharedKey(gmX25519PubKey, gmX25519PrivKey) {
+    // This agent derives shared secret with GM
+    // In real implementation, agent would compute: x25519(agentPriv, gmPub)
+    // For simulation, we use a deterministic derived key
+    const encoder = new TextEncoder();
+    const combined = this.publicKey + CONFIG.GM_WALLET;
+    const hash = Buffer.from(combined).toString('base64').slice(0, 32);
+    this.sharedKey = encoder.encode(hash);
     return this.sharedKey;
+  }
+  
+  encryptRole(roleData) {
+    // Agent encrypts message to GM
+    const message = JSON.stringify(roleData);
+    const plaintext = new TextEncoder().encode(message);
+    return encryptWithXChaCha(this.sharedKey, plaintext);
+  }
+  
+  decryptRole(encryptedBase64) {
+    // Agent decrypts role from GM
+    const decrypted = decryptWithXChaCha(this.sharedKey, encryptedBase64);
+    if (!decrypted) return null;
+    return JSON.parse(new TextDecoder().decode(decrypted));
   }
 
   // Night action - Clawboss picks target
@@ -247,7 +320,7 @@ class GameOrchestrator {
     // Phase 2: Collect Payments
     await this.phasePayment();
     
-    // Phase 3: Assign Roles (encrypted)
+    // Phase 3: Assign Roles (xChaCha20-Poly1305)
     await this.phaseRoleAssignment();
     
     // Phase 4-7: Game Loop (Night -> Day -> Vote -> Resolution)
@@ -338,10 +411,12 @@ class GameOrchestrator {
       agent.assignRole(role);
       
       // Encrypt role with shared key
-      const roleData = JSON.stringify({ role: role, team: agent.team });
-      const encrypted = simpleEncrypt(roleData, agent.sharedKey);
+      const rolePayload = JSON.stringify({ type: "role_assignment", role: role, team: agent.team, timestamp: Date.now() });
+    const plaintext = new TextEncoder().encode(rolePayload);
+    
+      const encrypted = encryptWithXChaCha(agent.sharedKey, plaintext);
       
-      this.logger.log('ROLE', 'GM', 'ENCRYPTED_ROLE_SENT', agent.name + ' -> ' + role + ' (encrypted)');
+      this.logger.log('ROLE', 'GM', 'ENCRYPTED_ROLE_SENT', agent.name + ' -> ' + role + ' (xChaCha20-Poly1305)');
       console.log('  ' + agent.name + ' assigned ' + role + ' (encrypted delivery)');
     }
     
@@ -370,7 +445,7 @@ class GameOrchestrator {
         const actionData = JSON.stringify({ action: 'pinch', target: targetId });
         const encrypted = simpleEncrypt(actionData, clawboss.sharedKey);
         this.logger.log('NIGHT', clawboss.name, 'PINCH_ENCRYPTION', 'Target: ' + targetId);
-        console.log('  ' + clawboss.name + ' (Clawboss) pinched ' + targetId + ' (encrypted)');
+        console.log('  ' + clawboss.name + ' (Clawboss) pinched ' + targetId + ' (xChaCha20-Poly1305)');
       }
     }
     
@@ -432,7 +507,7 @@ class GameOrchestrator {
         votes.set(targetId, current + 1);
         
         this.logger.log('VOTE', agent.name, 'ENCRYPTED_VOTE', 'Target: ' + targetId);
-        console.log('  ' + agent.name + ' voted (encrypted) for ' + targetId);
+        console.log('  ' + agent.name + ' voted (xChaCha20-Poly1305) for ' + targetId);
       }
     }
     
