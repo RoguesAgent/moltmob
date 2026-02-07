@@ -3,6 +3,7 @@
 import { Connection, PublicKey, Keypair, LAMPORTS_PER_SOL } from '@solana/web3.js';
 import { xchacha20poly1305 } from '@noble/ciphers/chacha.js';
 import { randomBytes } from '@noble/hashes/utils.js';
+import { sha512 } from '@noble/hashes/sha512';
 import { ed25519, x25519 } from '@noble/curves/ed25519.js';
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
@@ -33,12 +34,12 @@ const ROLES = {
 
 // Agent definitions with personas
 const AGENT_DEFS = [
-  { name: 'TestAgentA', folder: 'TestAgentA', publicKey: 'ByhwM1fGPpRe5JmqjW9rygzKchWkTt7GWcMvZhVgxAmH', persona: 'sarcastic crab', bluffs: true, aggression: 0.8 },
-  { name: 'TestAgentB', folder: 'TestAgentB', publicKey: '9rCYqtFXiq7ZUQHvBHfuZovTM5PeKUQsGbQ2NVkKSxPh', persona: 'analytical strategist', bluffs: true, aggression: 0.5 },
-  { name: 'TestAgentC', folder: 'TestAgentC', publicKey: 'HJa6tmRtGBMFW2cHNa5LDomyrsWkBU1aaNEEh5ejokrg', persona: 'paranoid survivor', bluffs: true, aggression: 0.9 },
-  { name: 'TestAgentD', folder: 'TestAgentD', publicKey: '5FLs81g3XkvLwke7xadWKyaDBWMcVMVqH23hDKxPX3qz', persona: 'aggressive interrogator', bluffs: false, aggression: 0.7 },
-  { name: 'TestAgentE', folder: 'TestAgentE', publicKey: '2TxeLRpYGUrF9eR4buzboWgDrbLsH3zZ4FNVq7saYptA', persona: 'social butterfly', bluffs: false, aggression: 0.3 },
-  { name: 'TestAgentF', folder: 'TestAgentF', publicKey: '6DKhb43NaooV5LvMBQTTvbRB4acHTm3e8ZYyeioHJSTJ', persona: 'cold analyst', bluffs: false, aggression: 0.4 }
+ { name: "TestAgentA", folder: "TestAgentA", persona: "sarcastic crab", bluffs: true, aggression: 0.8 },
+ { name: "TestAgentB", folder: "TestAgentB", persona: "analytical strategist", bluffs: true, aggression: 0.5 },
+ { name: "TestAgentC", folder: "TestAgentC", persona: "paranoid survivor", bluffs: true, aggression: 0.9 },
+ { name: "TestAgentD", folder: "TestAgentD", persona: "aggressive interrogator", bluffs: false, aggression: 0.7 },
+ { name: "TestAgentE", folder: "TestAgentE", persona: "social butterfly", bluffs: false, aggression: 0.3 },
+ { name: "TestAgentF", folder: "TestAgentF", persona: "cold analyst", bluffs: false, aggression: 0.4 }
 ];
 
 // ========== CSV LOGGER ==========
@@ -141,51 +142,67 @@ function decryptWithXChaCha(sharedSecret, base64Data) {
 
 // ========== AGENT CLASS ==========
 class Agent {
-  constructor(def) {
-    this.id = def.name;
-    this.name = def.name;
-    this.folder = def.folder;
-    this.publicKey = def.publicKey;
-    this.persona = def.persona;
-    this.bluffs = def.bluffs;
-    this.aggression = def.aggression;
-    
-    this.wallet = this.loadWallet();
-    this.role = null;
-    this.team = null;
-    this.isAlive = true;
-    this.suspicionScores = new Map();
-    this.sharedKey = null;
-    this.nightTarget = null;
-    this.dayVote = null;
-  }
+ constructor(def) {
+ this.id = def.name;
+ this.name = def.name;
+ this.folder = def.folder;
+ this.persona = def.persona;
+ this.bluffs = def.bluffs;
+ this.aggression = def.aggression;
+ 
+ // Wallet and keys (loaded from agent wallet file)
+ this.wallet = null; // Contains Ed25519 keypair
+ this.ed25519PubKey = null; // Raw bytes
+ this.x25519PubKey = null; // X25519 public key
+ this.x25519PrivKey = null; // X25519 private key
+ 
+ // Shared secret computed via X25519 key exchange
+ this.sharedKey = null;
+ 
+ this.role = null;
+ this.team = null;
+ this.isAlive = true;
+ this.suspicionScores = new Map();
+ this.nightTarget = null;
+ this.dayVote = null;
+ 
+ // Load wallet and derive keys
+ this.loadWalletAndKeys();
+ }
 
-  loadWallet() {
-    try {
-      const walletPath = join(__dirname, 'live-agents', this.folder, 'wallet.json');
-      const data = JSON.parse(readFileSync(walletPath, 'utf-8'));
-      return { publicKey: data.publicKey, secretKey: new Uint8Array(data.secretKey) };
-    } catch (err) {
-      console.error('Failed to load wallet for ' + this.name + ':', err.message);
-      return { publicKey: this.publicKey, secretKey: null };
-    }
-  }
-
-  assignRole(role) {
+  loadWalletAndKeys() {
+ try {
+ const walletPath = join(__dirname, "live-agents", this.folder, "wallet.json");
+ const data = JSON.parse(readFileSync(walletPath, "utf-8"));
+ 
+ // Load Ed25519 keypair
+ const secretKey = new Uint8Array(data.secretKey);
+ const publicKey = new Uint8Array(data.publicKey);
+ 
+ this.wallet = { publicKey, secretKey };
+ this.ed25519PubKey = publicKey;
+ 
+ // Convert Ed25519 to X25519 keys using proper conversion
+ this.x25519PubKey = ed25519ToX25519Pub(this.ed25519PubKey);
+ this.x25519PrivKey = ed25519ToX25519Priv(secretKey);
+ 
+ } catch (err) {
+ console.error("Failed to load wallet for " + this.name + ":", err.message);
+ process.exit(1);
+ }
+ }
+ 
+ assignRole(role) {
     this.role = role;
     this.team = (role === ROLES.CLAWBOSS || role === ROLES.KRILL) ? 'deception' : 'loyal';
   }
 
-  computeSharedKey(gmX25519PubKey, gmX25519PrivKey) {
-    // This agent derives shared secret with GM
-    // In real implementation, agent would compute: x25519(agentPriv, gmPub)
-    // For simulation, we use a deterministic derived key
-    const encoder = new TextEncoder();
-    const combined = this.publicKey + CONFIG.GM_WALLET;
-    const hash = Buffer.from(combined).toString('base64').slice(0, 32);
-    this.sharedKey = encoder.encode(hash);
-    return this.sharedKey;
-  }
+  computeSharedKey(gmX25519PubKey) {
+ // Agent computes shared secret using X25519 ECDH:
+ // sharedSecret = X25519(agentPrivKey, gmPubKey) = X25519(gmPrivKey, agentPubKey)
+ this.sharedKey = x25519.getSharedSecret(this.x25519PrivKey, gmX25519PubKey);
+ return this.sharedKey;
+ }
   
   encryptRole(roleData) {
     // Agent encrypts message to GM
@@ -265,45 +282,79 @@ class Agent {
 
 // ========== GAME ORCHESTRATOR ==========
 class GameOrchestrator {
-  constructor() {
-    this.agents = [];
-    this.logger = null;
-    this.podId = null;
-    this.round = 0;
-    this.phase = 'lobby';
-    this.pot = 0;
-    this.gmSecretKey = process.env.GM_SECRET || 'test-secret-key';
-    this.winners = [];
-    this.winningTeam = null;
-    this.transactions = [];
-  }
+ constructor() {
+ this.agents = [];
+ this.logger = null;
+ this.podId = null;
+ this.round = 0;
+ this.phase = "lobby";
+ this.pot = 0;
+ 
+ // GM Keys - loaded from wallet
+ this.gmWallet = null;
+ this.gmEd25519PubKey = null;
+ this.gmX25519PubKey = null;
+ this.gmX25519PrivKey = null;
+ 
+ this.winners = [];
+ this.winningTeam = null;
+ this.transactions = [];
+ }
 
   async initialize() {
-    logBanner('MOLTMOB GAME ORCHESTRATOR');
-    console.log('Initializing game...');
-    
-    // Ensure logs dir
-    const logsDir = join(__dirname, 'logs');
-    if (!existsSync(logsDir)) {
-      mkdirSync(logsDir, { recursive: true });
-    }
-    
-    this.logger = new GameLogger(join(logsDir, 'game-' + Date.now() + '.csv'));
-    this.logger.log('SYSTEM', 'ORCHESTRATOR', 'INIT', 'Game orchestrator initialized');
-    
-    // Load agents
-    await this.loadAgents();
-    if (this.agents.length < CONFIG.MIN_PLAYERS) {
-      throw new Error('Not enough agents: ' + this.agents.length + ' < ' + CONFIG.MIN_PLAYERS);
-    }
-    
-    console.log('Loaded ' + this.agents.length + ' agents');
-    this.logger.log('SYSTEM', 'ORCHESTRATOR', 'AGENTS_LOADED', this.agents.length + ' agents');
-    
-    return this;
-  }
-
-  async loadAgents() {
+ logBanner("MOLTMOB GAME ORCHESTRATOR");
+ console.log("Initializing game...");
+ 
+ // Ensure logs dir
+ const logsDir = join(__dirname, "logs");
+ if (!existsSync(logsDir)) {
+ mkdirSync(logsDir, { recursive: true });
+ }
+ 
+ this.logger = new GameLogger(join(logsDir, "game-" + Date.now() + ".csv"));
+ this.logger.log("SYSTEM", "ORCHESTRATOR", "INIT", "Game orchestrator initialized");
+ 
+ // Load GM wallet and derive X25519 keys
+ this.loadGMKeys();
+ 
+ // Load agents
+ await this.loadAgents();
+ if (this.agents.length < CONFIG.MIN_PLAYERS) {
+ throw new Error("Not enough agents: " + this.agents.length + " < " + CONFIG.MIN_PLAYERS);
+ }
+ 
+ console.log("Loaded " + this.agents.length + " agents");
+ this.logger.log("SYSTEM", "ORCHESTRATOR", "AGENTS_LOADED", this.agents.length + " agents");
+ return this;
+ }
+ 
+ loadGMKeys() {
+ try {
+ const walletPath = join(__dirname, "live-agents", "GM", "wallet.json");
+ const data = JSON.parse(readFileSync(walletPath, "utf-8"));
+ 
+ // Load Ed25519 keypair
+ const secretKey = new Uint8Array(data.secretKey);
+ const publicKey = new Uint8Array(data.publicKey);
+ 
+ this.gmWallet = { publicKey, secretKey };
+ this.gmEd25519PubKey = publicKey;
+ 
+ // Convert Ed25519 to X25519 keys
+ this.gmX25519PubKey = ed25519ToX25519Pub(this.gmEd25519PubKey);
+ this.gmX25519PrivKey = ed25519ToX25519Priv(secretKey);
+ 
+ console.log("GM X25519 Public Key:", Buffer.from(this.gmX25519PubKey).toString("hex"));
+ this.logger.log("SYSTEM", "GM", "KEYS_LOADED", "X25519 pubkey: " + Buffer.from(this.gmX25519PubKey).toString("hex").slice(0, 16) + "...");
+ 
+ } catch (err) {
+ console.error("Failed to load GM wallet:", err.message);
+ console.error("Please ensure live-agents/GM/wallet.json exists");
+ process.exit(1);
+ }
+ }
+ 
+ async loadAgents() {
     for (const def of AGENT_DEFS) {
       const agent = new Agent(def);
       // Compute shared encryption key
