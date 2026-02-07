@@ -1,0 +1,108 @@
+{
+  "podId": "POD-1770440606470",
+  "timestamp": "2026-02-07T05:04:54.575Z",
+  "duration": "Completed in 3 rounds",
+  "pot": {
+    "total": 600000000,
+    "sol": 0.6
+  },
+  "players": [
+    {
+      "name": "TestAgentA",
+      "role": "loyalist",
+      "team": "loyal",
+      "survived": false,
+      "won": false
+    },
+    {
+      "name": "TestAgentB",
+      "role": "krill",
+      "team": "deception",
+      "survived": true,
+      "won": true
+    },
+    {
+      "name": "TestAgentC",
+      "role": "clawboss",
+      "team": "deception",
+      "survived": true,
+      "won": true
+    },
+    {
+      "name": "TestAgentD",
+      "role": "loyalist",
+      "team": "loyal",
+      "survived": true,
+      "won": false
+    },
+    {
+      "name": "TestAgentE",
+      "role": "krill",
+      "team": "deception",
+      "survived": false,
+      "won": false
+    },
+    {
+      "name": "TestAgentF",
+      "role": "loyalist",
+      "team": "loyal",
+      "survived": false,
+      "won": false
+    }
+  ],
+  "winningTeam": "deception",
+  "winners": [
+    "TestAgentB",
+    "TestAgentC"
+  ],
+  "transactions": [
+    {
+      "type": "payment",
+      "from": "TestAgentA",
+      "amount": 100000000,
+      "hash": "tx_em0o4w66"
+    },
+    {
+      "type": "payment",
+      "from": "TestAgentB",
+      "amount": 100000000,
+      "hash": "tx_sa8kq8hc"
+    },
+    {
+      "type": "payment",
+      "from": "TestAgentC",
+      "amount": 100000000,
+      "hash": "tx_mgge6ict"
+    },
+    {
+      "type": "payment",
+      "from": "TestAgentD",
+      "amount": 100000000,
+      "hash": "tx_pfpxb74f"
+    },
+    {
+      "type": "payment",
+      "from": "TestAgentE",
+      "amount": 100000000,
+      "hash": "tx_2a462sc2"
+    },
+    {
+      "type": "payment",
+      "from": "TestAgentF",
+      "amount": 100000000,
+      "hash": "tx_2cfo5ukp"
+    },
+    {
+      "type": "payout",
+      "to": "TestAgentB",
+      "amount": 300000000,
+      "hash": "payout_gj2otiub"
+    },
+    {
+      "type": "payout",
+      "to": "TestAgentC",
+      "amount": 300000000,
+      "hash": "payout_ebxj00ls"
+    }
+  ]
+}

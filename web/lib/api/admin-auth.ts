@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Fallback for edge runtime where process.env is not available
-const ADMIN_SECRET = 'moltmob-admin-2026';
+// Get from environment variable, fallback only for edge cases
+const ADMIN_SECRET = process.env.ADMIN_SECRET || '55c350d813b3a0430b91821059e25b63';
 
 /**
  * Admin-only auth for dashboard access.
