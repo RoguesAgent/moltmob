@@ -1,7 +1,20 @@
 // ── x402 Payment Integration for MoltMob ──
+// Uses PayAI.network facilitator: https://facilitator.payai.network
 // Handles entry fee collection via x402 protocol on Solana devnet
-// Simplified version without @solana/kit dependency
 
+// Re-export from PayAI module
+export {
+  createPaymentRequirements,
+  verifyPaymentViaPayAI,
+  settlePaymentViaPayAI,
+  parsePaymentHeader,
+  createPaymentHeader,
+  getPendingPayment,
+  completePayment,
+  getAllPendingPayments,
+} from './x402-payai';
+
+// Legacy exports for backward compatibility
 export interface X402Config {
   network: 'devnet' | 'mainnet';
   paymentAddress: string;
@@ -43,18 +56,7 @@ export interface X402PaymentProof {
   timestamp: number;
 }
 
-const RPC_ENDPOINTS = {
-  devnet: 'https://api.devnet.solana.com',
-  mainnet: 'https://api.mainnet-beta.solana.com',
-};
-
-const pendingPayments = new Map<string, {
-  podId: string;
-  playerId: string;
-  amount: number;
-  createdAt: number;
-}>();
-
+// Legacy function - wraps new PayAI requirements
 export function createPaymentRequest(
   podId: string,
   playerId: string,
@@ -62,20 +64,6 @@ export function createPaymentRequest(
   paymentAddress: string
 ): X402PaymentRequest {
   const paymentId = crypto.randomUUID();
-  
-  pendingPayments.set(paymentId, {
-    podId,
-    playerId,
-    amount: amountLamports,
-    createdAt: Date.now(),
-  });
-  
-  const cutoff = Date.now() - 10 * 60 * 1000;
-  for (const [id, data] of Array.from(pendingPayments.entries())) {
-    if (data.createdAt < cutoff) {
-      pendingPayments.delete(id);
-    }
-  }
   
   return {
     scheme: 'x402',
@@ -105,78 +93,34 @@ export function createPaymentRequest(
   };
 }
 
+// Legacy verify - now uses PayAI facilitator
 export async function verifyPayment(
   proof: X402PaymentProof,
   expectedAmount: number,
   expectedAddress: string,
   network: 'devnet' | 'mainnet' = 'devnet'
 ): Promise<{ valid: boolean; error?: string }> {
-  try {
-    const response = await fetch(RPC_ENDPOINTS[network], {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: 1,
-        method: 'getTransaction',
-        params: [proof.txHash, { commitment: 'confirmed' }],
-      }),
-    });
-    
-    const { result } = await response.json();
-    
-    if (!result) {
-      return { valid: false, error: 'Transaction not found' };
-    }
-    
-    if (result.meta?.err) {
-      return { valid: false, error: 'Transaction failed' };
-    }
-    
-    // Simplified verification - check transfer in transaction
-    const meta = result.meta;
-    const message = result.transaction.message;
-    
-    // Look for transfer to expected address
-    const preBalances = meta.preBalances;
-    const postBalances = meta.postBalances;
-    const accountKeys = message.accountKeys;
-    
-    let transferFound = false;
-    for (let i = 0; i < accountKeys.length; i++) {
-      if (accountKeys[i] === expectedAddress) {
-        const balanceChange = postBalances[i] - preBalances[i];
-        if (balanceChange === expectedAmount) {
-          transferFound = true;
-        }
-      }
-    }
-    
-    if (!transferFound) {
-      return { valid: false, error: 'Payment verification failed' };
-    }
-    
-    return { valid: true };
-  } catch (error) {
-    return { valid: false, error: String(error) };
-  }
+  // Import dynamically to avoid circular deps
+  const { verifyPaymentViaPayAI } = await import('./x402-payai');
+  
+  // Convert proof to authorization format expected by PayAI
+  const authorization = Buffer.from(JSON.stringify({
+    txHash: proof.txHash,
+    from: proof.from,
+    amount: proof.amount.toString(),
+  })).toString('base64');
+  
+  const payload = Buffer.from(JSON.stringify({
+    to: expectedAddress,
+    amount: expectedAmount.toString(),
+    network,
+  })).toString('base64');
+  
+  const result = await verifyPaymentViaPayAI(authorization, payload, `solana-${network}`);
+  return { valid: result.valid, error: result.error };
 }
 
-export function getPendingPayment(paymentId: string) {
-  return pendingPayments.get(paymentId) ?? null;
-}
-
-export function completePayment(paymentId: string): boolean {
-  return pendingPayments.delete(paymentId);
-}
-
-export function getPodPaymentAddress(podId: string, network: 'devnet' | 'mainnet'): string {
-  if (network === 'devnet') {
-    return process.env.X402_DEVNET_WALLET || '11111111111111111111111111111111';
-  }
-  throw new Error('Mainnet not yet supported');
-}
-
+// Helper to format x402 headers for HTTP responses
 export function formatX402Headers(request: X402PaymentRequest): Record<string, string> {
   return {
     'X-Payment-Scheme': request.headers['X-Payment-Scheme'],
@@ -187,4 +131,12 @@ export function formatX402Headers(request: X402PaymentRequest): Record<string, s
     'X-Payment-Id': request.headers['X-Payment-Id'],
     'X-Payment-Message': request.headers['X-Payment-Message'],
   };
+}
+
+// Helper to get payment address
+export function getPodPaymentAddress(podId: string, network: 'devnet' | 'mainnet'): string {
+  if (network === 'devnet') {
+    return process.env.X402_DEVNET_WALLET || '11111111111111111111111111111111';
+  }
+  throw new Error('Mainnet not yet supported');
 }
