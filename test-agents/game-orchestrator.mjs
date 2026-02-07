@@ -443,7 +443,7 @@ class GameOrchestrator {
       if (target) {
         // Clawboss pinches target
         const actionData = JSON.stringify({ action: 'pinch', target: targetId });
-        const encrypted = simpleEncrypt(actionData, clawboss.sharedKey);
+        const encrypted = encryptWithXChaCha(clawboss.sharedKey, new TextEncoder().encode(JSON.stringify({type:"night_action",action:"pinch",timestamp:Date.now(),target:targetId})));
         this.logger.log('NIGHT', clawboss.name, 'PINCH_ENCRYPTION', 'Target: ' + targetId);
         console.log('  ' + clawboss.name + ' (Clawboss) pinched ' + targetId + ' (xChaCha20-Poly1305)');
       }
@@ -501,7 +501,7 @@ class GameOrchestrator {
       if (targetId) {
         // Encrypt vote
         const voteData = JSON.stringify({ vote: targetId, voter: agent.id });
-        const encrypted = simpleEncrypt(voteData, agent.sharedKey);
+        const encrypted = encryptWithXChaCha(agent.sharedKey, new TextEncoder().encode(JSON.stringify({type:"vote",voter:agent.id,target:targetId,timestamp:Date.now()})));
         
         const current = votes.get(targetId) || 0;
         votes.set(targetId, current + 1);
