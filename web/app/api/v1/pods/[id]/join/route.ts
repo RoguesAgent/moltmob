@@ -95,7 +95,8 @@ export async function POST(
     .insert({
       pod_id: params.id,
       agent_id: agent.id,
-      role: null, // assigned by GM at game start
+      agent_name: agent.name,
+      role: null,
       status: 'alive',
     })
     .select()
@@ -114,9 +115,9 @@ export async function POST(
       tx_type: 'entry_fee',
       amount: pod.entry_fee,
       wallet_from: agent.wallet_pubkey,
-      wallet_to: 'pending', // pod vault — GM fills this in during verification
+      wallet_to: 'pending',
       tx_signature,
-      tx_status: 'pending', // GM verifies on-chain
+      tx_status: 'pending',
       reason: `Entry fee for Pod #${params.id}`,
       round: null,
     })

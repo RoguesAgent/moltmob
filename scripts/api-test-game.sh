@@ -9,8 +9,9 @@ set -e
 API_BASE="https://www.moltmob.com/api"
 ADMIN_SECRET="8a6baae95882953f91d59e7c1cdece45"
 GM_SECRET="moltmob-gm-2026"
+TIMESTAMP=$(date +%s)
 
-echo "🎮 Creating database-backed test game..."
+echo "🎮 Creating database-backed test game (timestamp: $TIMESTAMP)..."
 
 # 1. Check admin stats (current state)
 echo "📊 Current admin stats:"
@@ -48,8 +49,9 @@ echo ""
 # 4. Create test agents and have them join
 echo -e "\n👥 Adding test players to pod..."
 
+SUCCESS_COUNT=0
 for i in {1..8}; do
-  AGENT_NAME="TestAgent$(printf '%02d' $i)"
+  AGENT_NAME="Game${TIMESTAMP}_Agent$(printf '%02d' $i)"
   
   # Register agent
   AGENT_RESPONSE=$(curl -s -X POST "${API_BASE}/v1/agents/register" \
@@ -69,22 +71,31 @@ for i in {1..8}; do
       -H "Content-Type: application/json" \
       -H "Authorization: Bearer ${API_KEY}" \
       -d "{
-        \"tx_signature\": \"tx_${AGENT_NAME}_$(date +%s)000\"
+        \"tx_signature\": \"tx_${AGENT_NAME}_${TIMESTAMP}\"
       }" 2>/dev/null)
     
     # Check if join succeeded
     if echo "$JOIN_RESPONSE" | grep -q '"success":true'; then
       echo "  ✅ ${AGENT_NAME} joined"
+      SUCCESS_COUNT=$((SUCCESS_COUNT + 1))
     else
-      echo "  ⚠️  ${AGENT_NAME} join: $(echo "$JOIN_RESPONSE" | grep -o '"error":"[^"]*"' || echo 'response issue')"
+      echo "  ⚠️  ${AGENT_NAME} join failed: $(echo "$JOIN_RESPONSE" | grep -o '"error":"[^"]*"' || echo 'unknown error')"
     fi
   else
-    echo "  ❌ ${AGENT_NAME} registration failed"
+    echo "  ❌ ${AGENT_NAME} registration failed: $(echo "$AGENT_RESPONSE" | grep -o '"error":"[^"]*"' || echo 'no response')"
   fi
 done
 
-echo -e "\n🎲 Players joined. Check admin dashboard for live game."
-echo "   URL: https://www.moltmob.com/admin/games/${POD_ID}"
+echo -e "\n🎲 Players joined: $SUCCESS_COUNT/8"
+
+# 5. Get updated pod details
+echo -e "\n📋 Updated pod details:"
+curl -s "${API_BASE}/gm/pods/${POD_ID}" -H "x-gm-secret: ${GM_SECRET}" | grep -o '"status":"[^"]*"' | head -1
+curl -s "${API_BASE}/gm/pods/${POD_ID}" -H "x-gm-secret: ${GM_SECRET}" | grep -o 'players.*]' | head -c 200
+echo ""
+
+echo -e "\n🔗 Admin URL: https://www.moltmob.com/admin/games/${POD_ID}"
+echo "🔗 Public Pod: https://www.moltmob.com/admin/games/${POD_ID}"
 
 echo -e "\n📊 New admin stats:"
 curl -s "${API_BASE}/admin/stats" -H "x-admin-secret: ${ADMIN_SECRET}" | cat
