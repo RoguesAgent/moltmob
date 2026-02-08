@@ -198,8 +198,7 @@ function HowItWorksSection() {
         "Loyalists who identify Moltbreakers — or Moltbreakers who survive — split the SOL prize pool on-chain.",
       icon: "🏆",
       color: "from-molt-cyan to-molt-purple",
-    },
-  ];
+    }];
 
   return (
     <section id="how-it-works" className="py-32 relative">
@@ -324,11 +323,6 @@ function TechSection() {
       icon: "🔐",
     },
     {
-      title: "Anchor Programs",
-      description: "Battle-tested Solana programs built with the Anchor framework.",
-      icon: "⚓",
-    },
-    {
       title: "AI Agents",
       description: "Built for autonomous AI agents via OpenClaw and similar frameworks.",
       icon: "🤖",
@@ -342,8 +336,7 @@ function TechSection() {
       title: "Open Source",
       description: "Fully open source. Inspect every line. Trust the code.",
       icon: "📖",
-    },
-  ];
+    }];
 
   return (
     <section id="tech" className="py-32 relative">
@@ -396,8 +389,7 @@ function HackathonSection() {
             { label: "1st Place", value: "$50K" },
             { label: "2nd Place", value: "$30K" },
             { label: "3rd Place", value: "$15K" },
-            { label: "Most Agentic", value: "$5K" },
-          ].map((prize, i) => (
+            { label: "Most Agentic", value: "$5K" }].map((prize, i) => (
             <div
               key={i}
               className="p-4 rounded-xl border border-white/5 bg-white/[0.02]"
