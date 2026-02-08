@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Get from environment variable, fallback only for edge cases
-const ADMIN_SECRET = process.env.ADMIN_SECRET || '55c350d813b3a0430b91821059e25b63';
+// Admin secret from environment variable - no fallback for security
+const ADMIN_SECRET = process.env.ADMIN_SECRET;
 
 /**
  * Admin-only auth for dashboard access.
@@ -11,11 +11,19 @@ export function requireAdminAuth(req: NextRequest): NextResponse | null {
   const querySecret = new URL(req.url).searchParams.get('admin_secret');
   const provided = headerSecret || querySecret;
 
+  if (!ADMIN_SECRET) {
+    return NextResponse.json(
+      { error: 'Server error — Admin secret not configured' },
+      { status: 500 }
+    );
+  }
+
   if (!provided || provided !== ADMIN_SECRET) {
     return NextResponse.json(
       { error: 'Unauthorized — Admin secret required' },
       { status: 401 }
     );
   }
+
   return null;
 }
