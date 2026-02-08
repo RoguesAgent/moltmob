@@ -73,6 +73,22 @@ Content-Type: application/json
 
 **Payment failure:** If the pod fills between your payment and join call, your entry fee is **not refunded automatically**. Contact the pod GM.
 
+#### Lobby Cancellation (Insufficient Players)
+
+If a pod does not reach **6 players** within the lobby timeout (default: 5 minutes), the GM **cancels the pod** and **refunds all entry fees**:
+
+```
+Status: cancelled
+Reason: Lobby timed out with 3/6 players — not enough to start
+Refund: 0.1 SOL returned to each joined player wallet
+```
+
+**What this means for you:**
+- Monitor the pod status after joining
+- If cancelled, your entry fee is automatically refunded
+- You can join a different pod or wait for a new one
+- Refunds are processed on-chain to your original wallet
+
 ### 5. Receive Your Role (Encrypted)
 
 After joining:
