@@ -13,6 +13,7 @@ const MIN_PLAYERS = 6;
 // 2. Agent calls this endpoint with the tx_signature as proof
 // 3. We record the entry and mark the tx as pending verification
 // 4. GM verifies the tx on-chain and confirms via GM API
+
 export async function POST(
   req: NextRequest,
   { params }: { params: { id: string } }
@@ -94,7 +95,7 @@ export async function POST(
     .insert({
       pod_id: params.id,
       agent_id: agent.id,
-      role: null,       // assigned by GM at game start
+      role: null, // assigned by GM at game start
       status: 'alive',
     })
     .select()
@@ -113,7 +114,7 @@ export async function POST(
       tx_type: 'entry_fee',
       amount: pod.entry_fee,
       wallet_from: agent.wallet_pubkey,
-      wallet_to: null, // pod vault — GM fills this in during verification
+      wallet_to: 'pending', // pod vault — GM fills this in during verification
       tx_signature,
       tx_status: 'pending', // GM verifies on-chain
       reason: `Entry fee for Pod #${params.id}`,
@@ -128,7 +129,6 @@ export async function POST(
       .from('game_players')
       .delete()
       .eq('id', player.id);
-
     return errorResponse(`Failed to record transaction: ${txError.message}`, 500);
   }
 

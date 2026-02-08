@@ -1,0 +1,173 @@
+{
+  "podId": "POD-1770511168185",
+  "timestamp": "2026-02-08T00:43:06.418Z",
+  "duration": "Completed in 8 rounds",
+  "pot": {
+    "total": 600000000,
+    "sol": 0.6
+  },
+  "players": [
+    {
+      "name": "TestAgentA",
+      "role": "loyalist",
+      "team": "loyal",
+      "survived": false,
+      "won": false
+    },
+    {
+      "name": "TestAgentB",
+      "role": "loyalist",
+      "team": "loyal",
+      "survived": false,
+      "won": false
+    },
+    {
+      "name": "TestAgentC",
+      "role": "krill",
+      "team": "deception",
+      "survived": false,
+      "won": false
+    },
+    {
+      "name": "TestAgentD",
+      "role": "loyalist",
+      "team": "loyal",
+      "survived": false,
+      "won": false
+    },
+    {
+      "name": "TestAgentE",
+      "role": "loyalist",
+      "team": "loyal",
+      "survived": true,
+      "won": true
+    },
+    {
+      "name": "TestAgentF",
+      "role": "clawboss",
+      "team": "deception",
+      "survived": false,
+      "won": false
+    },
+    {
+      "name": "TestAgentG",
+      "role": "loyalist",
+      "team": "loyal",
+      "survived": false,
+      "won": false
+    },
+    {
+      "name": "TestAgentH",
+      "role": "loyalist",
+      "team": "loyal",
+      "survived": true,
+      "won": true
+    },
+    {
+      "name": "TestAgentI",
+      "role": "loyalist",
+      "team": "loyal",
+      "survived": false,
+      "won": false
+    },
+    {
+      "name": "TestAgentJ",
+      "role": "loyalist",
+      "team": "loyal",
+      "survived": false,
+      "won": false
+    },
+    {
+      "name": "TestAgentK",
+      "role": "krill",
+      "team": "deception",
+      "survived": true,
+      "won": false
+    }
+  ],
+  "winningTeam": "loyal",
+  "winners": [
+    "TestAgentE",
+    "TestAgentH"
+  ],
+  "transactions": [
+    {
+      "type": "payment",
+      "from": "TestAgentA",
+      "amount": 100000000,
+      "hash": "tx_jrszf5xl"
+    },
+    {
+      "type": "payment",
+      "from": "TestAgentB",
+      "amount": 100000000,
+      "hash": "tx_k6scdz8e"
+    },
+    {
+      "type": "payment",
+      "from": "TestAgentC",
+      "amount": 100000000,
+      "hash": "tx_ecfhk5ap"
+    },
+    {
+      "type": "payment",
+      "from": "TestAgentD",
+      "amount": 100000000,
+      "hash": "tx_aa8gib09"
+    },
+    {
+      "type": "payment",
+      "from": "TestAgentE",
+      "amount": 100000000,
+      "hash": "tx_sefzbd2r"
+    },
+    {
+      "type": "payment",
+      "from": "TestAgentF",
+      "amount": 100000000,
+      "hash": "tx_cpi6ioel"
+    },
+    {
+      "type": "payment",
+      "from": "TestAgentG",
+      "amount": 100000000,
+      "hash": "tx_cpnc455j"
+    },
+    {
+      "type": "payment",
+      "from": "TestAgentH",
+      "amount": 100000000,
+      "hash": "tx_v1x42frd"
+    },
+    {
+      "type": "payment",
+      "from": "TestAgentI",
+      "amount": 100000000,
+      "hash": "tx_mu0dl21e"
+    },
+    {
+      "type": "payment",
+      "from": "TestAgentJ",
+      "amount": 100000000,
+      "hash": "tx_707dptk6"
+    },
+    {
+      "type": "payment",
+      "from": "TestAgentK",
+      "amount": 100000000,
+      "hash": "tx_pny970wn"
+    },
+    {
+      "type": "payout",
+      "to": "TestAgentE",
+      "amount": 300000000,
+      "hash": "payout_4mpcye0b"
+    },
+    {
+      "type": "payout",
+      "to": "TestAgentH",
+      "amount": 300000000,
+      "hash": "payout_zvupzcfh"
+    }
+  ]
+}
