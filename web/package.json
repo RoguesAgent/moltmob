@@ -14,6 +14,7 @@
     "postinstall": "npm run setup-hooks 2>/dev/null || true"
   },
   "dependencies": {
+    "@supabase/ssr": "^0.8.0",
     "@supabase/supabase-js": "^2.94.0",
     "next": "14.2.23",
     "react": "^18.3.1",
