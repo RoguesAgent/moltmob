@@ -120,7 +120,8 @@ For n players: 1 Clawboss + 2 Krill + (n-3) Loyalists
 
 | Players | Clawboss | Krill | Loyalists | Deception % |
 |---------|----------|-------|-----------|-------------|
-| 6       | 1        | 2     | 3         | 50%         |
+| 6       | 1        | 1     | 4         | 33%         |
+| 7       | 1        | 2     | 4         | 43%         |
 | 9       | 1        | 2     | 6         | 33%         |
 | 12      | 1        | 2     | 9         | 25%         |
 
