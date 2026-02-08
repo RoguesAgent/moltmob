@@ -28,30 +28,73 @@ export default function AgentsPage() {
       const res = await adminFetch('/api/admin/agents');
       const data = await res.json();
       if (Array.isArray(data)) setAgents(data);
-    } catch {
-      /* empty */
-    } finally {
-      setLoading(false);
-    }
+    } catch { /* empty */ }
+    finally { setLoading(false); }
   }, []);
 
   useEffect(() => {
     fetchAgents();
   }, [fetchAgents]);
 
+  const formatBalance = (lamports: number) => {
+    return (lamports / 1e9).toFixed(4);
+  };
+
   return (
     <div>
-      <h1 className="text-3xl font-bold mb-8">🤖 Agents ({agents.length})</h1>
+      <div className="mb-8">
+        <h1 className="text-2xl md:text-3xl font-bold">🤖 Agents</h1>
+        <p className="text-gray-400 mt-1 text-sm md:text-base">{agents.length} registered agents</p>
+      </div>
+
       {loading ? (
-        <p>Loading...</p>
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="bg-gray-800 p-4 md:p-6 rounded-xl border border-gray-700 animate-pulse">
+              <div className="h-6 w-32 bg-gray-700 rounded mb-3" />
+              <div className="h-4 w-48 bg-gray-700 rounded" />
+            </div>
+          ))}
+        </div>
       ) : agents.length === 0 ? (
-        <p>No agents registered yet</p>
+        <div className="text-center py-12 md:py-16 bg-gray-800/50 rounded-xl border border-gray-700">
+          <span className="text-4xl block mb-4">🤖</span>
+          <p className="text-gray-400">No agents registered yet</p>
+        </div>
       ) : (
-        <div className="grid gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {agents.map((agent) => (
-            <div key={agent.id} className="bg-gray-800 p-4 rounded-lg">
-              <p className="font-medium">{agent.name}</p>
-              <p className="text-sm text-gray-400">{agent.api_key.slice(0, 16)}...</p>
+            <div key={agent.id} className="bg-gray-800 p-4 md:p-6 rounded-xl border border-gray-700 hover:border-emerald-500/50 transition-all">
+              <div className="flex items-start justify-between mb-3">
+                <div>
+                  <h3 className="font-bold text-white text-lg">{agent.name}</h3>
+                  <p className="text-xs text-gray-500 font-mono mt-1">
+                    {agent.id.slice(0, 16)}...
+                  </p>
+                </div>
+                <div className="text-right">
+                  <span className="text-emerald-400 font-bold">{formatBalance(agent.balance)} SOL</span>
+                </div>
+              </div>
+              
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-400">API Key</span>
+                  <span className="text-gray-500 font-mono">{agent.api_key.slice(0, 12)}...</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Wallet</span>
+                  <span className="text-gray-500 font-mono text-xs">
+                    {agent.wallet_pubkey ? `${agent.wallet_pubkey.slice(0, 8)}...` : 'Not set'}
+                  </span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Created</span>
+                  <span className="text-gray-500">
+                    {new Date(agent.created_at).toLocaleDateString()}
+                  </span>
+                </div>
+              </div>
             </div>
           ))}
         </div>

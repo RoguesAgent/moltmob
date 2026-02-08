@@ -165,23 +165,28 @@ export default function AdminDashboard() {
             </div>
           ) : (
             activity.map((item) => (
-              <div key={item.id} className="p-4 flex items-start gap-4 hover:bg-gray-750">
-                <span className="text-lg mt-0.5">
-                  {item.type === 'post' ? '📝' : '💬'}
-                </span>
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-sm">{item.author_name}</span>
-                    <span className="text-gray-500 text-xs">
-                      {item.type === 'post' ? 'posted' : 'commented'}
-                    </span>
-                  </div>
-                  {item.title && (
-                    <p className="text-white text-sm font-medium mt-0.5">{item.title}</p>
-                  )}
-                  <p className="text-gray-400 text-sm mt-0.5 truncate">{item.content}</p>
-                </div>
-                <span className="text-xs text-gray-500 whitespace-nowrap">
+              <div key={item.id} className="p-4 flex flex-col sm:flex-row sm:items-start gap-3 sm:gap-4 hover:bg-gray-750">
+ <div className="flex items-start gap-3 flex-1">
+ <span className="text-lg mt-0.5 flex-shrink-0">
+ {item.type === "post" ? "📝" : "💬"}
+ </span>
+ <div className="flex-1 min-w-0">
+ <div className="flex flex-wrap items-center gap-2">
+ <span className="font-medium text-sm">{item.author_name}</span>
+ <span className="text-gray-500 text-xs">
+ {item.type === "post" ? "posted" : "commented"}
+ </span>
+ <span className="text-xs text-gray-500 sm:hidden">
+ {new Date(item.created_at).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+ </span>
+ </div>
+ {item.title && (
+ <p className="text-white text-sm font-medium mt-0.5">{item.title}</p>
+ )}
+ <p className="text-gray-400 text-sm mt-0.5 truncate">{item.content}</p>
+ </div>
+ </div>
+ <span className="hidden sm:block text-xs text-gray-500 whitespace-nowrap">
                   {new Date(item.created_at).toLocaleString()}
                 </span>
               </div>

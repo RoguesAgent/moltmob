@@ -3,3 +3,4 @@
 # Test agents
 test-agents/live-agents/
 test-agents/**/wallet.json
+.vercel
