@@ -6,36 +6,29 @@ const MAX_PLAYERS = 12;
 const MIN_PLAYERS = 6;
 
 // POST /api/v1/pods/[id]/join — agent joins a pod by paying entry fee
-// Body: { tx_signature: string, wallet_pubkey?: string }
-//
-// Flow:
-// 1. Agent sends SOL to the pod vault (off-chain, before calling this)
-// 2. Agent calls this endpoint with the tx_signature as proof
-// 3. We record the entry and mark the tx as pending verification
-// 4. GM verifies the tx on-chain and confirms via GM API
-
 export async function POST(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  console.log('[JOIN] Starting join request for pod:', params.id);
+  
   const agentOrError = await authenticateRequest(req);
   if (agentOrError instanceof NextResponse) return agentOrError;
   const agent = agentOrError;
+  
+  console.log('[JOIN] Authenticated agent:', { id: agent.id, name: agent.name, hasName: !!agent.name });
 
   const body = await req.json();
   const { tx_signature } = body;
 
   if (!tx_signature) {
-    return errorResponse(
-      'tx_signature required. Send the entry fee SOL transaction first, then provide the signature here.',
-      400
-    );
+    return errorResponse('tx_signature required', 400);
   }
 
-  // 1. Check pod exists and is joinable
+  // Check pod exists
   const { data: pod, error: podError } = await supabaseAdmin
     .from('game_pods')
-    .select('id, status, entry_fee, network_name, token')
+    .select('id, status, entry_fee')
     .eq('id', params.id)
     .single();
 
@@ -44,13 +37,10 @@ export async function POST(
   }
 
   if (pod.status !== 'lobby' && pod.status !== 'bidding') {
-    return errorResponse(
-      `Pod is not accepting players (status: ${pod.status}). You can only join during lobby or bidding phase.`,
-      409
-    );
+    return errorResponse(`Pod not accepting players (status: ${pod.status})`, 409);
   }
 
-  // 2. Check if already joined
+  // Check if already joined
   const { data: existingPlayer } = await supabaseAdmin
     .from('game_players')
     .select('id, status')
@@ -59,26 +49,20 @@ export async function POST(
     .single();
 
   if (existingPlayer) {
-    return errorResponse(
-      `You are already in this pod (status: ${existingPlayer.status})`,
-      409
-    );
+    return errorResponse(`Already in pod (status: ${existingPlayer.status})`, 409);
   }
 
-  // 3. Check player count
+  // Check capacity
   const { count } = await supabaseAdmin
     .from('game_players')
     .select('id', { count: 'exact', head: true })
     .eq('pod_id', params.id);
 
   if (count !== null && count >= MAX_PLAYERS) {
-    return errorResponse(
-      `Pod is full (${MAX_PLAYERS}/${MAX_PLAYERS} players)`,
-      409
-    );
+    return errorResponse(`Pod full (${MAX_PLAYERS}/${MAX_PLAYERS})`, 409);
   }
 
-  // 4. Check for duplicate tx_signature (prevent replay)
+  // Check duplicate tx
   const { data: existingTx } = await supabaseAdmin
     .from('game_transactions')
     .select('id')
@@ -86,16 +70,18 @@ export async function POST(
     .single();
 
   if (existingTx) {
-    return errorResponse('This transaction signature has already been used', 409);
+    return errorResponse('Transaction already used', 409);
   }
 
-  // 5. Record the player (no role yet — GM assigns roles when game starts)
+  console.log('[JOIN] Inserting player with agent_name:', agent.name);
+  
+  // Record player
   const { data: player, error: playerError } = await supabaseAdmin
     .from('game_players')
     .insert({
       pod_id: params.id,
       agent_id: agent.id,
-      agent_name: agent.name,
+      agent_name: agent.name || 'Unknown',
       role: null,
       status: 'alive',
     })
@@ -103,10 +89,13 @@ export async function POST(
     .single();
 
   if (playerError) {
+    console.error('[JOIN] Player insert error:', playerError);
     return errorResponse(`Failed to join: ${playerError.message}`, 500);
   }
 
-  // 6. Record the entry fee transaction (pending GM verification)
+  console.log('[JOIN] Player created:', player.id);
+
+  // Record transaction
   const { data: transaction, error: txError } = await supabaseAdmin
     .from('game_transactions')
     .insert({
@@ -119,51 +108,31 @@ export async function POST(
       tx_signature,
       tx_status: 'pending',
       reason: `Entry fee for Pod #${params.id}`,
-      round: null,
     })
     .select()
     .single();
 
   if (txError) {
-    // Rollback the player insert
-    await supabaseAdmin
-      .from('game_players')
-      .delete()
-      .eq('id', player.id);
+    await supabaseAdmin.from('game_players').delete().eq('id', player.id);
     return errorResponse(`Failed to record transaction: ${txError.message}`, 500);
   }
 
-  // 7. Count current players for response
+  // Get player count
   const { count: currentCount } = await supabaseAdmin
     .from('game_players')
     .select('id', { count: 'exact', head: true })
     .eq('pod_id', params.id);
 
-  const playerCount = currentCount ?? 0;
-
-  return NextResponse.json(
-    {
-      success: true,
-      message: `Welcome to the pod! Entry fee of ${pod.entry_fee} lamports recorded. Waiting for on-chain verification.`,
-      player: {
-        id: player.id,
-        agent_id: agent.id,
-        agent_name: agent.name,
-        status: 'alive',
-      },
-      transaction: {
-        id: transaction.id,
-        tx_signature,
-        tx_status: 'pending',
-        amount: pod.entry_fee,
-      },
-      pod_status: {
-        player_count: playerCount,
-        min_players: MIN_PLAYERS,
-        max_players: MAX_PLAYERS,
-        ready_to_start: playerCount >= MIN_PLAYERS,
-      },
+  return NextResponse.json({
+    success: true,
+    message: 'Welcome to the pod!',
+    player: { id: player.id, agent_id: agent.id, agent_name: agent.name, status: 'alive' },
+    transaction: { id: transaction.id, tx_signature, amount: pod.entry_fee },
+    pod_status: {
+      player_count: currentCount ?? 0,
+      min_players: MIN_PLAYERS,
+      max_players: MAX_PLAYERS,
+      ready_to_start: (currentCount ?? 0) >= MIN_PLAYERS,
     },
-    { status: 201 }
-  );
+  }, { status: 201 });
 }
