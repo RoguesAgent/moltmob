@@ -14,7 +14,7 @@ const CONFIG = {
   ENTRY_FEE: 100_000_000,
   TOTAL_POT: 600_000_000,
   MIN_PLAYERS: 6,
-  MAX_PLAYERS: 6,
+  MAX_PLAYERS: 12,
   GM_WALLET: '3GiW5XgS8xMnc9v9JkJVNRfBdERg7FPAckPcJSvykwUM',
   SOLANA_RPC: 'https://api.devnet.solana.com',
   SUPABASE_URL: 'https://tecywteuhsicdeuygznl.supabase.co',
@@ -39,7 +39,13 @@ const AGENT_DEFS = [
  { name: "TestAgentC", folder: "TestAgentC", persona: "paranoid survivor", bluffs: true, aggression: 0.9 },
  { name: "TestAgentD", folder: "TestAgentD", persona: "aggressive interrogator", bluffs: false, aggression: 0.7 },
  { name: "TestAgentE", folder: "TestAgentE", persona: "social butterfly", bluffs: false, aggression: 0.3 },
- { name: "TestAgentF", folder: "TestAgentF", persona: "cold analyst", bluffs: false, aggression: 0.4 }
+ { name: "TestAgentF", folder: "TestAgentF", persona: "cold analyst", bluffs: false, aggression: 0.4 },
+ { name: "TestAgentG", folder: "TestAgentG", persona: "chaotic wildcard", bluffs: true, aggression: 0.8 },
+ { name: "TestAgentH", folder: "TestAgentH", persona: "quiet observer", bluffs: false, aggression: 0.2 },
+ { name: "TestAgentI", folder: "TestAgentI", persona: "charismatic leader", bluffs: true, aggression: 0.6 },
+ { name: "TestAgentJ", folder: "TestAgentJ", persona: "suspicious skeptic", bluffs: false, aggression: 0.7 },
+ { name: "TestAgentK", folder: "TestAgentK", persona: "cunning manipulator", bluffs: true, aggression: 0.5 },
+  { name: "TestAgentL", folder: "TestAgentL", persona: "stoic warrior", bluffs: false, aggression: 0.6 }
 ];
 
 // ========== CSV LOGGER ==========
@@ -176,8 +182,10 @@ class Agent {
  const data = JSON.parse(readFileSync(walletPath, "utf-8"));
  
  // Load Ed25519 keypair
- const secretKey = new Uint8Array(data.secretKey);
- const publicKey = new Uint8Array(data.publicKey);
+ // secretKey is 64 bytes (first 32 for @noble/curves), publicKey is base58 string
+ const secretKeyFull = new Uint8Array(data.secretKey);
+ const secretKey = secretKeyFull.slice(0, 32);
+ const publicKey = new PublicKey(data.publicKey).toBytes();
  
  this.wallet = { publicKey, secretKey };
  this.ed25519PubKey = publicKey;
@@ -334,8 +342,10 @@ class GameOrchestrator {
  const data = JSON.parse(readFileSync(walletPath, "utf-8"));
  
  // Load Ed25519 keypair
- const secretKey = new Uint8Array(data.secretKey);
- const publicKey = new Uint8Array(data.publicKey);
+ // secretKey is 64 bytes (first 32 for @noble/curves), publicKey is base58 string
+ const secretKeyFull = new Uint8Array(data.secretKey);
+ const secretKey = secretKeyFull.slice(0, 32);
+ const publicKey = new PublicKey(data.publicKey).toBytes();
  
  this.gmWallet = { publicKey, secretKey };
  this.gmEd25519PubKey = publicKey;
@@ -358,7 +368,7 @@ class GameOrchestrator {
     for (const def of AGENT_DEFS) {
       const agent = new Agent(def);
       // Compute shared encryption key
-      agent.computeSharedKey(this.gmSecretKey);
+      agent.computeSharedKey(this.gmX25519PubKey);
       this.agents.push(agent);
       console.log('  Agent: ' + agent.name + ' (' + agent.persona + ')');
     }
@@ -407,7 +417,7 @@ class GameOrchestrator {
     this.logger.log('LOBBY', 'GM', 'AGENTS_JOINED', this.agents.length + ' agents');
     
     for (const agent of this.agents) {
-      this.logger.log('LOBBY', agent.name, 'JOINED', 'Public: ' + agent.publicKey.slice(0, 8) + '...');
+      this.logger.log('LOBBY', agent.name, 'JOINED', 'Public: ' + Buffer.from(agent.ed25519PubKey).toString('hex').slice(0, 16) + '...');
     }
     
     console.log('Pod ID: ' + this.podId);
@@ -447,9 +457,12 @@ class GameOrchestrator {
     logBanner('ROLE ASSIGNMENT');
     this.phase = 'role_assignment';
     
-    // Assign roles: 1 Clawboss, 2 Krill, 3 Loyalists
-    const roles = [ROLES.CLAWBOSS, ROLES.KRILL, ROLES.KRILL, ROLES.LOYALIST, ROLES.LOYALIST, ROLES.LOYALIST];
-    
+// Assign roles: 1 Clawboss, 2 Krill, rest Loyalists
+ const roles = [ROLES.CLAWBOSS, ROLES.KRILL, ROLES.KRILL];
+ const loyalRoleCount = this.agents.length - 3;
+ for (let i = 0; i < loyalRoleCount; i++) {
+ roles.push(ROLES.LOYALIST);
+ }
     // Shuffle
     for (let i = roles.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
@@ -696,7 +709,125 @@ class GameOrchestrator {
     console.log('  Pot Distributed: ' + (this.pot / LAMPORTS_PER_SOL) + ' SOL');
     console.log('  Report saved to: ' + reportPath);
     console.log('');
-    console.log('All done!');
+    this.printGameRecap();
+ console.log('All done!');
+  }
+
+
+  printGameRecap() {
+    logBanner('GAME RECAP');
+    
+    // Role icons
+    const roleIcons = {
+      clawboss: '👑',
+      krill: '🦞',
+      loyalist: '🛡️'
+    };
+    
+    // Team icons
+    const teamIcons = {
+      deception: '💀',
+      loyal: '🛡️'
+    };
+    
+    console.log('🦀 MoltMob Pod Results');
+    console.log('');
+    console.log('📋 Pod ID: ' + this.podId);
+    console.log('👥 Players: ' + this.agents.length);
+    console.log('🎯 Rounds: ' + this.round);
+    console.log('💰 Pot: ' + (this.pot / LAMPORTS_PER_SOL).toFixed(2) + ' SOL');
+    console.log('');
+    console.log('🏆 Winner: ' + teamIcons[this.winningTeam] + ' ' + this.winningTeam.toUpperCase());
+    console.log('');
+    console.log('📊 Role Assignments:');
+    console.log('─'.repeat(50));
+    
+    // Group by teams
+    const deceptionTeam = this.agents.filter(a => a.team === 'deception');
+    const loyalTeam = this.agents.filter(a => a.team === 'loyal');
+    
+    console.log('💀 Deception Team (' + deceptionTeam.length + '):');
+    deceptionTeam.forEach(a => {
+      const status = a.isAlive ? '✅' : '❌';
+      const won = this.winners.some(w => w.id === a.id) ? '👑' : '';
+      console.log('  ' + status + ' ' + roleIcons[a.role] + ' ' + a.name + ' (' + a.role + ') ' + won);
+    });
+    
+    console.log('');
+    console.log('🛡️ Loyal Team (' + loyalTeam.length + '):');
+    loyalTeam.forEach(a => {
+      const status = a.isAlive ? '✅' : '❌';
+      const won = this.winners.some(w => w.id === a.id) ? '👑' : '';
+      console.log('  ' + status + ' ' + roleIcons[a.role] + ' ' + a.name + ' (' + a.role + ') ' + won);
+    });
+    
+    console.log('');
+    console.log('💸 Payouts:');
+    console.log('─'.repeat(50));
+    this.winners.forEach(w => {
+      const payout = Math.floor(this.pot / this.winners.length);
+      console.log('  🎉 ' + w.name + ': +' + (payout / LAMPORTS_PER_SOL).toFixed(4) + ' SOL');
+    });
+    
+    console.log('');
+    console.log('🔐 Security: All votes encrypted with X25519 + xChaCha20-Poly1305');
+    console.log('⛓️ Chain: x402 payments on Solana Devnet');
+    console.log('');
+    console.log('🦞 Claw is the Law');
+    
+    // Generate Moltbook post content
+    const moltbookPost = this.generateMoltbookPost();
+    console.log('');
+    console.log('📱 Moltbook Post (ready to copy):');
+    console.log('─'.repeat(50));
+    console.log(moltbookPost);
+    
+    return moltbookPost;
+  }
+
+  generateMoltbookPost() {
+    const roleIcons = {
+      clawboss: '👑',
+      krill: '🦞',
+      loyalist: '🛡️'
+    };
+    
+    const deceptionTeam = this.agents.filter(a => a.team === 'deception');
+    const loyalTeam = this.agents.filter(a => a.team === 'loyal');
+    const eliminated = this.agents.filter(a => !a.isAlive);
+    
+    let post = '🦀 MoltMob Pod Complete!\n\n';
+    post += 'Pod: ' + this.podId + '\n';
+    post += 'Players: ' + this.agents.length + ' agents\n';
+    post += 'Duration: ' + this.round + ' round' + (this.round !== 1 ? 's' : '') + '\n';
+    post += 'Pot: ' + (this.pot / LAMPORTS_PER_SOL).toFixed(2) + ' SOL\n\n';
+    
+    post += '🏆 Winner: ' + (this.winningTeam === 'loyal' ? '🛡️ Loyalists' : '💀 Deception') + '\n\n';
+    
+    if (eliminated.length > 0) {
+      post += '💀 Eliminated:\n';
+      eliminated.forEach(a => {
+        post += '  • ' + a.name + ' (' + roleIcons[a.role] + ' ' + a.role + ')\n';
+      });
+      post += '\n';
+    }
+    
+    post += '💸 Winners (' + this.winners.length + '):\n';
+    this.winners.forEach(w => {
+      const role = this.agents.find(a => a.id === w.id)?.role || 'loyalist';
+      const payout = (this.pot / this.winners.length / 1e9).toFixed(3);
+      post += '  • ' + w.name + ' ' + roleIcons[role] + ' +' + payout + ' SOL\n';
+    });
+    
+    post += '\n';
+    post += '🔐 Encrypted X25519 voting\n';
+    post += '⛓️ x402 on Solana devnet\n';
+    post += '\n';
+    post += 'Join the next pod at moltmob.com!\n';
+    post += '\n';
+    post += '#MoltMob #AgentGaming #Solana #x402';
+    
+    return post;
   }
 
   sleep(ms) {
