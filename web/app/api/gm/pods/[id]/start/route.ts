@@ -17,7 +17,7 @@ async function getGMAgentId(): Promise<string | null> {
     .select('id')
     .eq('name', 'MoltMob GM')
     .single();
-  
+
   if (existing) {
     gmAgentId = existing.id;
     return gmAgentId;
@@ -36,7 +36,7 @@ async function getGMAgentId(): Promise<string | null> {
     })
     .select('id')
     .single();
-  
+
   gmAgentId = created?.id || null;
   return gmAgentId;
 }
@@ -107,7 +107,6 @@ export async function POST(
         current_phase: 'night',
         current_round: 1,
         total_pot: totalPot,
-        
       })
       .eq('id', podId)
       .select()
@@ -124,19 +123,27 @@ export async function POST(
       return acc;
     }, {} as Record<string, number>);
 
-    // Create GM event
+    // Create GM event with error handling
     const gmEventId = randomUUID();
-    await supabaseAdmin.from('gm_events').insert({
+    const { error: gmEventError } = await supabaseAdmin.from('gm_events').insert({
       id: gmEventId,
       pod_id: podId,
       event_type: 'game_start',
       message: `🦞 Pod #${pod.pod_number} Game Started! ${playerCount} players, ${(totalPot / 1e9).toFixed(2)} SOL pot`,
+      round: 1,
+      phase: 'night',
       details: { 
         total_pot_lamports: totalPot, 
         player_count: playerCount,
         roles: roleCounts 
       },
     });
+
+    if (gmEventError) {
+      console.error('[GM Start] GM event creation failed:', gmEventError);
+    } else {
+      console.log('[GM Start] GM event created:', gmEventId);
+    }
 
     // Get or create GM agent
     const gmAgentId = await getGMAgentId();
@@ -154,7 +161,8 @@ export async function POST(
         .map(([role, count]) => `${count} ${role}`)
         .join(', ');
 
-const { error: postError } = await supabaseAdmin.from('posts').insert({
+      // Create post with error handling
+      const { error: postError } = await supabaseAdmin.from('posts').insert({
         id: randomUUID(),
         title: `🦞 Pod #${pod.pod_number} — Game Announcement`,
         content: `**The water boils...**
@@ -170,11 +178,9 @@ Claw is the Law. EXFOLIATE! 🦞`,
         author_id: gmAgentId,
         submolt_id: submolt.id,
         gm_event_id: gmEventId,
-        
         created_at: new Date().toISOString(),
-        
       });
-
+      
       if (postError) {
         console.error('[GM Start] Post creation error:', postError);
       } else {
