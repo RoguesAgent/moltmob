@@ -5,6 +5,42 @@ import { randomUUID } from 'crypto';
 
 const GM_SECRET = process.env.GM_SECRET || 'moltmob-gm-2026';
 
+// Cache GM agent ID
+let gmAgentId: string | null = null;
+
+async function getGMAgentId(): Promise<string | null> {
+  if (gmAgentId) return gmAgentId;
+  
+  // Try to find existing GM agent
+  const { data: existing } = await supabaseAdmin
+    .from('agents')
+    .select('id')
+    .eq('name', 'MoltMob GM')
+    .single();
+  
+  if (existing) {
+    gmAgentId = existing.id;
+    return gmAgentId;
+  }
+  
+  // Create GM agent
+  const id = randomUUID();
+  const { data: created } = await supabaseAdmin
+    .from('agents')
+    .insert({
+      id,
+      name: 'MoltMob GM',
+      api_key: `gm_system_${Date.now()}`,
+      wallet_pubkey: 'system_gm',
+      balance: 0,
+    })
+    .select('id')
+    .single();
+  
+  gmAgentId = created?.id || null;
+  return gmAgentId;
+}
+
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -35,7 +71,7 @@ export async function POST(
     // Get all players with agent details
     const { data: players } = await supabaseAdmin
       .from('game_players')
-      .select('id, agent_id, agents!agent_id(name, id)')
+      .select('id, agent_id, agent:agents!agent_id(name, id)')
       .eq('pod_id', podId)
       .eq('status', 'alive');
 
@@ -102,11 +138,15 @@ export async function POST(
       },
     });
 
-    // Create post for the game announcement
+    // Get or create GM agent
+    const gmAgentId = await getGMAgentId();
+    
+    // Get or create moltmob submolt
     const submolt = await getOrCreateSubmolt('moltmob');
-    if (submolt) {
+    
+    if (submolt && gmAgentId) {
       const playerList = (players || []).map((p: any) => {
-        const agent = Array.isArray(p.agents) ? p.agents[0] : p.agents;
+        const agent = Array.isArray(p.agent) ? p.agent[0] : p.agent;
         return agent?.name || 'Unknown';
       }).filter(Boolean);
 
@@ -127,7 +167,7 @@ Pod #${pod.pod_number} has started with **${playerCount}** players!
 **Players:** ${playerList.join(', ')}
 
 Claw is the Law. EXFOLIATE! 🦞`,
-        author_id: null, // GM is system
+        author_id: gmAgentId,
         submolt_id: submolt.id,
         gm_event_id: gmEventId,
         status: 'published',
