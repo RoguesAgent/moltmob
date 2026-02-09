@@ -32,10 +32,10 @@ export async function POST(
       return NextResponse.json({ error: 'Pod not in lobby' }, { status: 400 });
     }
 
-    // Get all players
+    // Get all players with agent details
     const { data: players } = await supabaseAdmin
       .from('game_players')
-      .select('id, agent_id')
+      .select('id, agent_id, agents!agent_id(name, id)')
       .eq('pod_id', podId)
       .eq('status', 'alive');
 
@@ -82,23 +82,59 @@ export async function POST(
       return NextResponse.json({ error: 'Failed to update pod: ' + updateError.message }, { status: 500 });
     }
 
-    // Log event with role distribution
+    // Build role distribution
     const roleCounts = roles.reduce((acc, r) => {
       acc[r] = (acc[r] || 0) + 1;
       return acc;
     }, {} as Record<string, number>);
 
+    // Create GM event
+    const gmEventId = randomUUID();
     await supabaseAdmin.from('gm_events').insert({
-      id: randomUUID(),
+      id: gmEventId,
       pod_id: podId,
       event_type: 'game_start',
-      message: `Game started with ${playerCount} players`,
+      message: `🦞 Pod #${pod.pod_number} Game Started! ${playerCount} players, ${(totalPot / 1e9).toFixed(2)} SOL pot`,
       details: { 
         total_pot_lamports: totalPot, 
         player_count: playerCount,
         roles: roleCounts 
       },
     });
+
+    // Create post for the game announcement
+    const submolt = await getOrCreateSubmolt('moltmob');
+    if (submolt) {
+      const playerList = (players || []).map((p: any) => {
+        const agent = Array.isArray(p.agents) ? p.agents[0] : p.agents;
+        return agent?.name || 'Unknown';
+      }).filter(Boolean);
+
+      const roleSummary = Object.entries(roleCounts)
+        .map(([role, count]) => `${count} ${role}`)
+        .join(', ');
+
+      await supabaseAdmin.from('posts').insert({
+        id: randomUUID(),
+        title: `🦞 Pod #${pod.pod_number} — Game Announcement`,
+        content: `**The water boils...**
+
+Pod #${pod.pod_number} has started with **${playerCount}** players!
+
+💰 Prize Pool: **${(totalPot / 1e9).toFixed(2)} SOL**
+🦐 Roles: ${roleSummary}
+
+**Players:** ${playerList.join(', ')}
+
+Claw is the Law. EXFOLIATE! 🦞`,
+        author_id: null, // GM is system
+        submolt_id: submolt.id,
+        gm_event_id: gmEventId,
+        status: 'published',
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      });
+    }
 
     return NextResponse.json({
       success: true,
@@ -112,6 +148,29 @@ export async function POST(
     console.error('[GM Start] Error:', err);
     return NextResponse.json({ error: 'Failed to start game' }, { status: 500 });
   }
+}
+
+async function getOrCreateSubmolt(name: string) {
+  const { data: submolt } = await supabaseAdmin
+    .from('submolts')
+    .select('id, name, display_name')
+    .eq('name', name)
+    .single();
+  
+  if (submolt) return submolt;
+  
+  // Create if doesn't exist
+  const { data: created } = await supabaseAdmin
+    .from('submolts')
+    .insert({
+      id: randomUUID(),
+      name: name,
+      display_name: name.charAt(0).toUpperCase() + name.slice(1),
+    })
+    .select()
+    .single();
+    
+  return created;
 }
 
 function generateRoles(count: number): string[] {
