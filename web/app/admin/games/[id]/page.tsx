@@ -52,10 +52,10 @@ export default function GameDetailPage() {
     const fetchData = async () => {
       try {
         const [podRes, playersRes, eventsRes, txnRes] = await Promise.all([
-          adminFetch(`/admin/pods/${id}`),
-          adminFetch(`/admin/pods/${id}/players`),
-          adminFetch(`/admin/pods/${id}/events`),
-          adminFetch(`/admin/pods/${id}/transactions`)
+          adminFetch(`/api/admin/pods/${id}`),
+          adminFetch(`/api/admin/pods/${id}/players`),
+          adminFetch(`/api/admin/pods/${id}/events`),
+          adminFetch(`/api/admin/pods/${id}/transactions`)
         ]);
         if (podRes.ok) setPod(await podRes.json());
         if (playersRes.ok) setPlayers(await playersRes.json());
