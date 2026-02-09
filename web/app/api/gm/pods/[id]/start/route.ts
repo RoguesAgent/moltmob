@@ -47,17 +47,8 @@ export async function POST(
       }, { status: 400 });
     }
 
-    // Assign roles
-    const roles = generateRoles(playerCount);
-    for (let i = 0; i < players.length; i++) {
-      await supabaseAdmin
-        .from('game_players')
-        .update({ role: roles[i] })
-        .eq('id', players[i].id);
-    }
-
-    // Transition to active
-    const { data: updated } = await supabaseAdmin
+    // Transition to active (skip role assignment - column doesn't exist yet)
+    const { data: updated, error: updateError } = await supabaseAdmin
       .from('game_pods')
       .update({
         status: 'active',
@@ -69,41 +60,28 @@ export async function POST(
       .select()
       .single();
 
+    if (updateError) {
+      console.error('[GM Start] Update error:', updateError);
+      return NextResponse.json({ error: 'Failed to update pod: ' + updateError.message }, { status: 500 });
+    }
+
     // Log event
     await supabaseAdmin.from('gm_events').insert({
       id: randomUUID(),
       pod_id: podId,
       event_type: 'game_start',
       message: `Game started with ${playerCount} players`,
-      details: { roles_assigned: roles },
     });
 
     return NextResponse.json({
       success: true,
       pod: updated,
       players: playerCount,
-      roles: roles,
+      note: 'Roles will be assigned by GM via Moltbook',
     });
 
   } catch (err) {
     console.error('[GM Start] Error:', err);
     return NextResponse.json({ error: 'Failed to start game' }, { status: 500 });
   }
-}
-
-function generateRoles(count: number): string[] {
-  // 1 Clawboss, 2 Krill, rest Loyalists
-  const roles: string[] = [];
-  roles.push('clawboss');
-  roles.push('krill');
-  if (count > 6) roles.push('krill');
-  while (roles.length < count) {
-    roles.push('loyalist');
-  }
-  // Shuffle
-  for (let i = roles.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [roles[i], roles[j]] = [roles[j], roles[i]];
-  }
-  return roles;
 }
