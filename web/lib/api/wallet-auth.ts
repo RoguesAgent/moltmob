@@ -16,8 +16,6 @@ export interface WalletAuthenticatedAgent {
 
 /**
  * Extract wallet pubkey from request headers.
- * Expected: x-wallet-pubkey: base58 pubkey
- * Expected: x-wallet-signature: base58 signature of timestamp
  */
 export function extractWalletAuth(req: NextRequest): {
   wallet_pubkey: string | null;
@@ -31,30 +29,22 @@ export function extractWalletAuth(req: NextRequest): {
 }
 
 /**
- * Verify wallet signature.
- * TODO: Implement actual Ed25519 signature verification
- * For now: trust the headers (mock mode)
+ * Verify wallet signature (mock mode for now).
  */
 export async function verifyWalletSignature(
   wallet_pubkey: string,
   signature: string,
   timestamp: string
 ): Promise<boolean> {
-  // In production: verify Ed25519 signature of timestamp using wallet_pubkey
-  // For mock/testing: accept any valid-looking signature
   if (!signature || signature.length < 10) return false;
-
-  // Check timestamp is recent (within 5 minutes)
   const ts = parseInt(timestamp, 10);
   const now = Date.now();
   if (isNaN(ts) || Math.abs(now - ts) > 5 * 60 * 1000) return false;
-
   return true;
 }
 
 /**
  * Authenticate by wallet.
- * Returns agent or creates new one if wallet not seen.
  */
 export async function authenticateByWallet(
   req: NextRequest
@@ -65,7 +55,6 @@ export async function authenticateByWallet(
     return errorResponse('x-wallet-pubkey header required', 401);
   }
 
-  // For write operations, require signature
   if (req.method !== 'GET') {
     if (!signature || !timestamp) {
       return errorResponse('x-wallet-signature and x-timestamp required for POST/PUT', 401);
@@ -76,69 +65,90 @@ export async function authenticateByWallet(
     }
   }
 
-  // Look up or create agent
+  // Look up agent - use only confirmed columns
   let { data: agent, error } = await supabaseAdmin
     .from('agents')
-    .select('id, name, wallet_pubkey, moltbook_username, balance')
+    .select('id, name, wallet_pubkey, balance')
     .eq('wallet_pubkey', wallet_pubkey)
     .single();
 
-  if (error && error.code !== 'PGRST116') { // PGRST116 = no rows, that's OK
+  if (error && error.code !== 'PGRST116') {
     return errorResponse('Database error', 500);
   }
 
   if (!agent) {
-    // Agent doesn't exist - will be created on quicken
-    return errorResponse('Agent not registered. POST to /api/v1/quicken to register and join.', 404);
+    return errorResponse('Agent not registered', 404);
   }
 
-  return agent as WalletAuthenticatedAgent;
+  // Map to interface (moltbook_username not in DB yet)
+  return {
+    id: agent.id,
+    name: agent.name,
+    wallet_pubkey: agent.wallet_pubkey,
+    encryption_pubkey: null,
+    moltbook_username: agent.name, // Use name as fallback
+    balance: agent.balance || 0,
+  } as WalletAuthenticatedAgent;
 }
 
 /**
- * Get or create agent by wallet + moltbook username.
+ * Get or create agent by wallet.
+ * Uses only confirmed columns: id, name, wallet_pubkey, balance
  */
 export async function getOrCreateAgent(params: {
   wallet_pubkey: string;
   moltbook_username: string;
   encryption_pubkey?: string;
 }): Promise<WalletAuthenticatedAgent> {
-  // Try to find existing
+  // Try to find existing - use only confirmed columns
   const { data: existing } = await supabaseAdmin
     .from('agents')
-    .select('id, name, wallet_pubkey, moltbook_username, balance')
+    .select('id, name, wallet_pubkey, balance')
     .eq('wallet_pubkey', params.wallet_pubkey)
     .single();
 
   if (existing) {
-    // Update moltbook_username if changed
-    if (existing.moltbook_username !== params.moltbook_username) {
+    // Update name if it changed (store moltbook_username in name field)
+    if (existing.name !== params.moltbook_username) {
       await supabaseAdmin
         .from('agents')
-        .update({ moltbook_username: params.moltbook_username })
+        .update({ name: params.moltbook_username })
         .eq('id', existing.id);
-      existing.moltbook_username = params.moltbook_username;
+      existing.name = params.moltbook_username;
     }
-    return existing as WalletAuthenticatedAgent;
+    return {
+      id: existing.id,
+      name: existing.name,
+      wallet_pubkey: existing.wallet_pubkey,
+      encryption_pubkey: null,
+      moltbook_username: existing.name,
+      balance: existing.balance || 0,
+    } as WalletAuthenticatedAgent;
   }
 
-  // Create new agent (without encryption_pubkey - column doesn't exist yet)
+  // Create new agent - use only confirmed columns
   const { data: agent, error } = await supabaseAdmin
     .from('agents')
     .insert({
       name: params.moltbook_username,
       wallet_pubkey: params.wallet_pubkey,
-      moltbook_username: params.moltbook_username,
       balance: 0,
     })
-    .select('id, name, wallet_pubkey, moltbook_username, balance')
+    .select('id, name, wallet_pubkey, balance')
     .single();
 
   if (error || !agent) {
     throw new Error('Failed to create agent: ' + (error?.message || 'unknown'));
   }
 
-  return agent as WalletAuthenticatedAgent;
+  return {
+    id: agent.id,
+    name: agent.name,
+    wallet_pubkey: agent.wallet_pubkey,
+    encryption_pubkey: null,
+    moltbook_username: agent.name,
+    balance: agent.balance || 0,
+  } as WalletAuthenticatedAgent;
 }
 
 export { errorResponse };
