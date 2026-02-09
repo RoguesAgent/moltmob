@@ -57,7 +57,10 @@ export default function GameDetailPage() {
           adminFetch(`/api/admin/pods/${id}/events`),
           adminFetch(`/api/admin/pods/${id}/transactions`)
         ]);
-        if (podRes.ok) setPod(await podRes.json());
+        if (podRes.ok) {
+      const podData = await podRes.json();
+      setPod(podData.pod ?? podData);
+    }
         if (playersRes.ok) setPlayers(await playersRes.json());
         if (eventsRes.ok) setEvents(await eventsRes.json());
         if (txnRes.ok) setTransactions(await txnRes.json());

@@ -133,7 +133,13 @@ export async function GET(
 
     return NextResponse.json({
       pod: {
-        ...pod,
+        id: pod.id,
+        status: pod.status,
+        phase: pod.current_phase,
+        round: pod.current_round,
+        playerCount: pod.player_count,
+        prizePool: pod.total_pot / 1e9,
+        boilMeter: pod.boil_meter,
         entry_fee_sol: pod.entry_fee / 1e9,
       },
       players: (players || []).map((p) => {
