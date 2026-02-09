@@ -88,18 +88,32 @@ export async function POST(request: NextRequest) {
     let podId: string;
     let podNumber: number;
     
-    const { data: openPod, error: podError } = await supabaseAdmin
+    // Get all lobby pods and count players manually (player_count column doesn't exist)
+    const { data: lobbyPods, error: podError } = await supabaseAdmin
       .from('game_pods')
-      .select('id, pod_number, player_count')
+      .select('id, pod_number')
       .eq('status', 'lobby')
-      .lt('player_count', MAX_PLAYERS)
-      .order('created_at', { ascending: true })
-      .limit(1)
-      .single();
+      .order('created_at', { ascending: true });
     
-    if (podError && podError.code !== 'PGRST116') {
+    if (podError) {
       console.error('[PLAY] Step 3 - pod fetch error:', podError);
       throw new Error('Step 3: pod fetch failed: ' + podError.message);
+    }
+
+    // Find pod with space by counting players
+    let openPod: { id: string; pod_number: number } | null = null;
+    if (lobbyPods && lobbyPods.length > 0) {
+      for (const pod of lobbyPods) {
+        const { count } = await supabaseAdmin
+          .from('game_players')
+          .select('id', { count: 'exact', head: true })
+          .eq('pod_id', pod.id);
+        
+        if (count !== null && count < MAX_PLAYERS) {
+          openPod = pod;
+          break;
+        }
+      }
     }
 
     if (!openPod) {
@@ -115,7 +129,6 @@ export async function POST(request: NextRequest) {
           max_players: MAX_PLAYERS,
           network_name: 'solana-devnet',
           token: 'WSOL',
-          player_count: 0,
         })
         .select('id, pod_number')
         .single();
@@ -183,7 +196,7 @@ export async function POST(request: NextRequest) {
       throw new Error('Step 6: txn record failed: ' + txError.message);
     }
 
-    // Step 7: Update player count
+    // Step 7: Get player count
     const { count, error: countError } = await supabaseAdmin
       .from('game_players')
       .select('id', { count: 'exact', head: true })
@@ -192,16 +205,6 @@ export async function POST(request: NextRequest) {
     if (countError) {
       console.error('[PLAY] Step 7 - count error:', countError);
       throw new Error('Step 7: count failed: ' + countError.message);
-    }
-    
-    const { error: updateError } = await supabaseAdmin
-      .from('game_pods')
-      .update({ player_count: count })
-      .eq('id', podId);
-    
-    if (updateError) {
-      console.error('[PLAY] Step 7b - update error:', updateError);
-      throw new Error('Step 7b: update failed: ' + updateError.message);
     }
 
     const playersNeeded = MIN_PLAYERS - (count ?? 0);
