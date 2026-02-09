@@ -107,7 +107,7 @@ export async function POST(
         current_phase: 'night',
         current_round: 1,
         total_pot: totalPot,
-        updated_at: new Date().toISOString(),
+        
       })
       .eq('id', podId)
       .select()
@@ -154,7 +154,7 @@ export async function POST(
         .map(([role, count]) => `${count} ${role}`)
         .join(', ');
 
-      await supabaseAdmin.from('posts').insert({
+const { error: postError } = await supabaseAdmin.from('posts').insert({
         id: randomUUID(),
         title: `🦞 Pod #${pod.pod_number} — Game Announcement`,
         content: `**The water boils...**
@@ -170,10 +170,16 @@ Claw is the Law. EXFOLIATE! 🦞`,
         author_id: gmAgentId,
         submolt_id: submolt.id,
         gm_event_id: gmEventId,
-        status: 'published',
+        
         created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        
       });
+
+      if (postError) {
+        console.error('[GM Start] Post creation error:', postError);
+      } else {
+        console.log('[GM Start] Post created successfully');
+      }
     }
 
     return NextResponse.json({
