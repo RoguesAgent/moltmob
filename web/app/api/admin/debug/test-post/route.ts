@@ -1,4 +1,4 @@
-// DEBUG: Test creating a post with current schema
+// DEBUG: Test creating a post with current schema (FIXED for actual columns)
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { requireAdminAuth } from '@/lib/api/admin-auth';
@@ -17,7 +17,6 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (!gmAgent) {
-      // Create GM agent
       const id = randomUUID();
       const { data: created } = await supabaseAdmin
         .from('agents')
@@ -61,15 +60,15 @@ export async function POST(req: NextRequest) {
       .limit(1)
       .single();
 
-    // Create a test GM event
+    // Create a test GM event (FIXED: no message column)
     const gmEventId = randomUUID();
     const { error: gmError } = await supabaseAdmin.from('gm_events').insert({
       id: gmEventId,
       pod_id: pod?.id || randomUUID(),
       event_type: 'test',
-      message: 'Test event',
       round: 1,
       phase: 'test',
+      details: { message: 'Test event' },
     });
 
     if (gmError) {
@@ -79,15 +78,14 @@ export async function POST(req: NextRequest) {
       }, { status: 500 });
     }
 
-    // Try creating a post with minimal fields
+    // Try creating a post with minimal fields (FIXED: no gm_event_id, status, updated_at)
     const postId = randomUUID();
     const { error: postError } = await supabaseAdmin.from('posts').insert({
       id: postId,
-      title: 'Test Post',
+      title: 'Test Post (FIXED)',
       content: 'This is a test post created via debug endpoint',
       author_id: gmAgent?.id,
       submolt_id: submolt?.id,
-      gm_event_id: gmEventId,
       created_at: new Date().toISOString(),
     });
 
@@ -104,9 +102,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ 
       success: true, 
       postId,
+      gm_event: gmEventId,
       gm_agent: gmAgent?.id,
       submolt: submolt?.id,
-      gm_event: gmEventId,
     });
 
   } catch (err) {
