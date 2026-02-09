@@ -55,23 +55,40 @@ export async function POST(request: NextRequest) {
       return errorResponse(`Memo mismatch`, 400);
     }
 
-    const { data: dupTx } = await supabaseAdmin
+    // Step 1: Check for duplicate tx
+    const { data: dupTx, error: dupTxError } = await supabaseAdmin
       .from('game_transactions')
       .select('id')
       .eq('tx_signature', txSignature)
       .single();
-
+    
+    if (dupTxError && dupTxError.code !== 'PGRST116') {
+      console.error('[PLAY] Step 1 - dup tx check error:', dupTxError);
+      throw new Error('Step 1: txn check failed: ' + dupTxError.message);
+    }
+    
     if (dupTx) {
       return errorResponse('Transaction already used', 409);
     }
 
-    const agent = await getOrCreateAgent({
-      wallet_pubkey: walletPubkey,
-      moltbook_username: expectedMemo,
-      encryption_pubkey: encryption_pubkey || null,
-    });
+    // Step 2: Get or create agent
+    let agent;
+    try {
+      agent = await getOrCreateAgent({
+        wallet_pubkey: walletPubkey,
+        moltbook_username: expectedMemo,
+        encryption_pubkey: encryption_pubkey || null,
+      });
+    } catch (agentErr) {
+      console.error('[PLAY] Step 2 - agent creation error:', agentErr);
+      throw new Error('Step 2: agent creation failed: ' + (agentErr instanceof Error ? agentErr.message : 'unknown'));
+    }
 
-    const { data: openPod } = await supabaseAdmin
+    // Step 3: Find or create pod
+    let podId: string;
+    let podNumber: number;
+    
+    const { data: openPod, error: podError } = await supabaseAdmin
       .from('game_pods')
       .select('id, pod_number, player_count')
       .eq('status', 'lobby')
@@ -79,13 +96,15 @@ export async function POST(request: NextRequest) {
       .order('created_at', { ascending: true })
       .limit(1)
       .single();
-
-    let podId: string;
-    let podNumber: number;
+    
+    if (podError && podError.code !== 'PGRST116') {
+      console.error('[PLAY] Step 3 - pod fetch error:', podError);
+      throw new Error('Step 3: pod fetch failed: ' + podError.message);
+    }
 
     if (!openPod) {
       podNumber = Math.floor(Math.random() * 9000) + 1000;
-      const { data: newPod } = await supabaseAdmin
+      const { data: newPod, error: createPodError } = await supabaseAdmin
         .from('game_pods')
         .insert({
           id: randomUUID(),
@@ -100,26 +119,38 @@ export async function POST(request: NextRequest) {
         })
         .select('id, pod_number')
         .single();
-
-      podId = newPod!.id;
-      podNumber = newPod!.pod_number;
+      
+      if (createPodError || !newPod) {
+        console.error('[PLAY] Step 3b - pod creation error:', createPodError);
+        throw new Error('Step 3b: pod creation failed: ' + (createPodError?.message || 'no data'));
+      }
+      
+      podId = newPod.id;
+      podNumber = newPod.pod_number;
     } else {
       podId = openPod.id;
       podNumber = openPod.pod_number;
     }
 
-    const { data: existing } = await supabaseAdmin
+    // Step 4: Check not already in pod
+    const { data: existing, error: existingError } = await supabaseAdmin
       .from('game_players')
       .select('id')
       .eq('pod_id', podId)
       .eq('agent_id', agent.id)
       .single();
-
+    
+    if (existingError && existingError.code !== 'PGRST116') {
+      console.error('[PLAY] Step 4 - existing check error:', existingError);
+      throw new Error('Step 4: existing check failed: ' + existingError.message);
+    }
+    
     if (existing) {
       return errorResponse('Already in this pod', 409);
     }
 
-    await supabaseAdmin.from('game_players').insert({
+    // Step 5: Join the game
+    const { error: joinError } = await supabaseAdmin.from('game_players').insert({
       id: randomUUID(),
       pod_id: podId,
       agent_id: agent.id,
@@ -127,8 +158,14 @@ export async function POST(request: NextRequest) {
       role: null,
       status: 'alive',
     });
+    
+    if (joinError) {
+      console.error('[PLAY] Step 5 - join error:', joinError);
+      throw new Error('Step 5: join failed: ' + joinError.message);
+    }
 
-    await supabaseAdmin.from('game_transactions').insert({
+    // Step 6: Record payment
+    const { error: txError } = await supabaseAdmin.from('game_transactions').insert({
       id: randomUUID(),
       pod_id: podId,
       agent_id: agent.id,
@@ -140,19 +177,35 @@ export async function POST(request: NextRequest) {
       tx_status: 'pending',
       reason: `Entry for pod #${podNumber}`,
     });
+    
+    if (txError) {
+      console.error('[PLAY] Step 6 - txn error:', txError);
+      throw new Error('Step 6: txn record failed: ' + txError.message);
+    }
 
-    const { count } = await supabaseAdmin
+    // Step 7: Update player count
+    const { count, error: countError } = await supabaseAdmin
       .from('game_players')
       .select('id', { count: 'exact', head: true })
       .eq('pod_id', podId);
-
-    await supabaseAdmin
+    
+    if (countError) {
+      console.error('[PLAY] Step 7 - count error:', countError);
+      throw new Error('Step 7: count failed: ' + countError.message);
+    }
+    
+    const { error: updateError } = await supabaseAdmin
       .from('game_pods')
       .update({ player_count: count })
       .eq('id', podId);
+    
+    if (updateError) {
+      console.error('[PLAY] Step 7b - update error:', updateError);
+      throw new Error('Step 7b: update failed: ' + updateError.message);
+    }
 
     const playersNeeded = MIN_PLAYERS - (count ?? 0);
-
+    
     return NextResponse.json({
       success: true,
       message: playersNeeded > 0
@@ -172,7 +225,8 @@ export async function POST(request: NextRequest) {
     }, { status: 201 });
 
   } catch (err) {
-    console.error('[PLAY] Error:', err);
-    return errorResponse('Failed to join game', 500);
+    const errorMsg = err instanceof Error ? err.message : 'Unknown error';
+    console.error('[PLAY] Full error:', err);
+    return errorResponse(errorMsg, 500);
   }
 }
