@@ -33,13 +33,12 @@ export async function POST(
     }
 
     // Count players
-    const { data: players } = await supabaseAdmin
+    const { data: players, count } = await supabaseAdmin
       .from('game_players')
-      .select('id, agent_id')
-      .eq('pod_id', podId)
-      .eq('status', 'alive');
+      .select('id', { count: 'exact' })
+      .eq('pod_id', podId);
 
-    const playerCount = players?.length || 0;
+    const playerCount = count || 0;
     if (playerCount < 6) {
       return NextResponse.json({ 
         error: 'Need at least 6 players', 
@@ -47,14 +46,18 @@ export async function POST(
       }, { status: 400 });
     }
 
-    // Transition to active (skip role assignment - column doesn't exist yet)
+    // Calculate total pot: entry_fee * playerCount
+    const totalPot = pod.entry_fee * playerCount;
+
+    // Transition to active (only use columns that actually exist!)
     const { data: updated, error: updateError } = await supabaseAdmin
       .from('game_pods')
       .update({
         status: 'active',
         current_phase: 'night',
         current_round: 1,
-        started_at: new Date().toISOString(),
+        total_pot: totalPot,
+        updated_at: new Date().toISOString(),
       })
       .eq('id', podId)
       .select()
@@ -71,13 +74,14 @@ export async function POST(
       pod_id: podId,
       event_type: 'game_start',
       message: `Game started with ${playerCount} players`,
+      details: { total_pot_lamports: totalPot, player_count: playerCount },
     });
 
     return NextResponse.json({
       success: true,
       pod: updated,
       players: playerCount,
-      note: 'Roles will be assigned by GM via Moltbook',
+      total_pot_sol: totalPot / 1e9,
     });
 
   } catch (err) {
