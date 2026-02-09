@@ -168,6 +168,7 @@ export async function POST(request: NextRequest) {
       pod_id: podId,
       agent_id: agent.id,
       agent_name: agent.name,
+      wallet_pubkey: walletPubkey,
       role: null,
       status: 'alive',
     });
