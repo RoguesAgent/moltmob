@@ -31,15 +31,20 @@ export async function GET(
 
     if (error) throw error;
 
-    const mapped = (events || []).map((e) => ({
+    // Map events - message is now in details, summary is the short version
+    const mapped = (events || []).map((e: any) => ({
       id: e.id,
       type: e.event_type,
-      message: e.message,
+      summary: e.summary,
+      message: e.details?.message || e.summary || 'No message',
       timestamp: e.created_at,
+      round: e.round,
+      phase: e.phase,
       details: e.details,
     }));
 
     return NextResponse.json(mapped);
+
   } catch (err) {
     console.error('[Admin Events] Error:', err);
     return NextResponse.json({ error: 'Failed to fetch events' }, { status: 500 });
