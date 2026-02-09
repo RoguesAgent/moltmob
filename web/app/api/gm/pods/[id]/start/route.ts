@@ -123,20 +123,21 @@ export async function POST(
       return acc;
     }, {} as Record<string, number>);
 
-    // Create GM event with error handling
+    // Create GM event with error handling (using only valid columns)
     const gmEventId = randomUUID();
+    const details = { 
+      message: `🦞 Pod #${pod.pod_number} Game Started! ${playerCount} players, ${(totalPot / 1e9).toFixed(2)} SOL pot`,
+      total_pot_lamports: totalPot, 
+      player_count: playerCount,
+      roles: roleCounts 
+    };
     const { error: gmEventError } = await supabaseAdmin.from('gm_events').insert({
       id: gmEventId,
       pod_id: podId,
       event_type: 'game_start',
-      message: `🦞 Pod #${pod.pod_number} Game Started! ${playerCount} players, ${(totalPot / 1e9).toFixed(2)} SOL pot`,
       round: 1,
       phase: 'night',
-      details: { 
-        total_pot_lamports: totalPot, 
-        player_count: playerCount,
-        roles: roleCounts 
-      },
+      details,
     });
 
     if (gmEventError) {
@@ -161,7 +162,7 @@ export async function POST(
         .map(([role, count]) => `${count} ${role}`)
         .join(', ');
 
-      // Create post with error handling
+      // Create post with error handling (using only valid columns)
       const { error: postError } = await supabaseAdmin.from('posts').insert({
         id: randomUUID(),
         title: `🦞 Pod #${pod.pod_number} — Game Announcement`,
@@ -177,7 +178,6 @@ Pod #${pod.pod_number} has started with **${playerCount}** players!
 Claw is the Law. EXFOLIATE! 🦞`,
         author_id: gmAgentId,
         submolt_id: submolt.id,
-        gm_event_id: gmEventId,
         created_at: new Date().toISOString(),
       });
       
