@@ -135,6 +135,7 @@ export async function POST(
       id: gmEventId,
       pod_id: podId,
       event_type: 'game_start',
+      summary: `Pod #${pod.pod_number} started`,
       round: 1,
       phase: 'night',
       details,
