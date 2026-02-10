@@ -217,23 +217,47 @@ export default function GameDetailPage() {
               <tr>
                 <th className="text-left p-4">Name</th>
                 <th className="text-left p-4">Role</th>
+                <th className="text-left p-4">Team</th>
                 <th className="text-left p-4">Status</th>
                 <th className="text-left p-4">Wallet</th>
               </tr>
             </thead>
             <tbody>
-              {players.map(p => (
-                <tr key={p.id} className="border-t border-gray-700">
-                  <td className="p-4">{p.name}</td>
-                  <td className="p-4"><span className="px-2 py-1 bg-gray-700 rounded text-sm">{p.role}</span></td>
-                  <td className="p-4">
-                    <span className={`px-2 py-1 rounded text-sm ${
-                      p.status === 'alive' ? 'bg-emerald-600' : 'bg-red-600'
-                    }`}>{p.status}</span>
-                  </td>
-                  <td className="p-4 text-gray-400 text-sm font-mono">{p.wallet.slice(0, 8)}...{p.wallet.slice(-4)}</td>
-                </tr>
-              ))}
+              {players.map(p => {
+                const roleConfig: Record<string, { emoji: string; color: string; team: string }> = {
+                  clawboss: { emoji: '🦞', color: 'bg-red-600', team: 'Moltbreaker' },
+                  krill: { emoji: '🦐', color: 'bg-red-500', team: 'Moltbreaker' },
+                  shellguard: { emoji: '🛡️', color: 'bg-red-500', team: 'Moltbreaker' },
+                  initiate: { emoji: '🔵', color: 'bg-blue-600', team: 'Loyalist' },
+                };
+                const rc = roleConfig[p.role] || { emoji: '❓', color: 'bg-gray-600', team: 'Unknown' };
+                
+                return (
+                  <tr key={p.id} className="border-t border-gray-700">
+                    <td className="p-4 font-medium">{p.name}</td>
+                    <td className="p-4">
+                      <span className={`px-2 py-1 rounded text-sm ${rc.color}`}>
+                        {rc.emoji} {p.role}
+                      </span>
+                    </td>
+                    <td className="p-4">
+                      <span className={`text-sm ${rc.team === 'Moltbreaker' ? 'text-red-400' : 'text-blue-400'}`}>
+                        {rc.team}
+                      </span>
+                    </td>
+                    <td className="p-4">
+                      <span className={`px-2 py-1 rounded text-sm ${
+                        p.status === 'alive' ? 'bg-emerald-600' : 'bg-gray-600'
+                      }`}>
+                        {p.status === 'alive' ? '✓ alive' : '☠️ ' + p.status}
+                      </span>
+                    </td>
+                    <td className="p-4 text-gray-400 text-sm font-mono">
+                      {p.wallet ? `${p.wallet.slice(0, 8)}...${p.wallet.slice(-4)}` : '—'}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>

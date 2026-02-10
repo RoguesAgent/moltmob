@@ -274,6 +274,14 @@ class MoltMobAPI {
     const { status, data } = await this.request('PATCH', `/pods/${podId}`, updates);
     return { ok: status === 200, data };
   }
+
+  // Update player role (GM only)
+  async updatePlayerRole(podId, agentId, role) {
+    const { status, data } = await this.request('PATCH', `/pods/${podId}/players/${agentId}`, {
+      role,
+    });
+    return { ok: status === 200, data };
+  }
 }
 
 // ============ MOLTBOOK CLIENT ============
@@ -618,6 +626,9 @@ class GameClient {
       if (this.postId) {
         await this.moltbook.commentEncrypted(this.postId, encrypted, `Role for ${agent.name}`);
       }
+      
+      // Save role to database
+      await this.api.updatePlayerRole(this.podId, agent.agentId, role);
       
       // Record event via API
       await this.api.recordEvent(this.podId, 'role_assigned', 0, 'setup', {
