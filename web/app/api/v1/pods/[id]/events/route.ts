@@ -1,78 +1,78 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { authenticateRequest, errorResponse } from '@/lib/api/auth';
+import { randomUUID } from 'crypto';
 
-// GET /api/v1/pods/[id]/events — public game events (GM's published announcements)
-// These are what the GM decides to make public: eliminations, phase changes, etc.
-// Night action details, role assignments, and private actions are NEVER exposed here.
-export async function GET(
+// POST /api/v1/pods/[id]/events — record a GM event
+export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
+  const { id: podId } = await params;
+  
   const agentOrError = await authenticateRequest(req);
   if (agentOrError instanceof NextResponse) return agentOrError;
+  const agent = agentOrError;
+
+  const body = await req.json();
+  const { event_type, round, phase, details } = body;
+
+  if (!event_type) {
+    return errorResponse('event_type required', 400);
+  }
 
   // Verify pod exists
   const { data: pod } = await supabaseAdmin
     .from('game_pods')
-    .select('id')
-    .eq('id', params.id)
+    .select('id, gm_agent_id')
+    .eq('id', podId)
     .single();
 
   if (!pod) {
     return errorResponse('Pod not found', 404);
   }
 
-  const { searchParams } = new URL(req.url);
-  const round = searchParams.get('round');
-  const since = searchParams.get('since'); // ISO timestamp — get events after this time
-
-  let query = supabaseAdmin
+  // Create event
+  const { data: event, error } = await supabaseAdmin
     .from('gm_events')
-    .select('id, round, phase, event_type, summary, created_at')
-    .eq('pod_id', params.id)
+    .insert({
+      id: randomUUID(),
+      pod_id: podId,
+      event_type,
+      round: round ?? 0,
+      phase: phase ?? 'unknown',
+      summary: event_type,
+      details: details ?? {},
+    })
+    .select()
+    .single();
+
+  if (error) {
+    return errorResponse(`Failed to record event: ${error.message}`, 500);
+  }
+
+  return NextResponse.json({ success: true, event }, { status: 201 });
+}
+
+// GET /api/v1/pods/[id]/events — list events for a pod
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id: podId } = await params;
+  
+  const agentOrError = await authenticateRequest(req);
+  if (agentOrError instanceof NextResponse) return agentOrError;
+
+  const { data: events, error } = await supabaseAdmin
+    .from('gm_events')
+    .select('*')
+    .eq('pod_id', podId)
     .order('created_at', { ascending: true });
-
-  if (round) {
-    query = query.eq('round', parseInt(round));
-  }
-
-  if (since) {
-    query = query.gt('created_at', since);
-  }
-
-  // Filter out internal-only event types — only show public announcements
-  const PUBLIC_EVENT_TYPES = [
-    'game_start', 'game_end',
-    'phase_change',
-    'vote_result', 'elimination', 'no_cook',
-    'boil_increase', 'boil_triggered',
-    'molt_triggered', 'molt_result',
-    'afk_warning', 'afk_kick',
-    'payout_calculated', 'payout_sent',
-    'announcement',
-  ];
-
-  query = query.in('event_type', PUBLIC_EVENT_TYPES);
-
-  const { data, error } = await query;
 
   if (error) {
     return errorResponse(`Failed to fetch events: ${error.message}`, 500);
   }
 
-  // Strip details field — only summary is public
-  // (details may contain private info like who targeted whom at night)
-  return NextResponse.json({
-    pod_id: params.id,
-    events: (data || []).map((e) => ({
-      id: e.id,
-      round: e.round,
-      phase: e.phase,
-      event_type: e.event_type,
-      summary: e.summary,
-      // details is intentionally excluded from public API
-      created_at: e.created_at,
-    })),
-  });
+  return NextResponse.json({ events });
 }

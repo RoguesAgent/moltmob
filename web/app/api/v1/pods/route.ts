@@ -1,6 +1,48 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { authenticateRequest, errorResponse } from '@/lib/api/auth';
+import { randomUUID } from 'crypto';
+
+// POST /api/v1/pods — create a new game pod (GM only)
+export async function POST(req: NextRequest) {
+  const agentOrError = await authenticateRequest(req);
+  if (agentOrError instanceof NextResponse) return agentOrError;
+  const agent = agentOrError;
+
+  const body = await req.json();
+  const { entry_fee, gm_wallet, network_name = 'devnet', token = 'SOL' } = body;
+
+  if (!entry_fee || !gm_wallet) {
+    return errorResponse('entry_fee and gm_wallet required', 400);
+  }
+
+  // Generate pod number
+  const podNumber = Math.floor(Math.random() * 9000) + 1000;
+
+  const { data: pod, error } = await supabaseAdmin
+    .from('game_pods')
+    .insert({
+      id: randomUUID(),
+      pod_number: podNumber,
+      status: 'lobby',
+      current_phase: 'lobby',
+      current_round: 0,
+      boil_meter: 0,
+      entry_fee,
+      gm_wallet,
+      gm_agent_id: agent.id,
+      network_name,
+      token,
+    })
+    .select()
+    .single();
+
+  if (error) {
+    return errorResponse(`Failed to create pod: ${error.message}`, 500);
+  }
+
+  return NextResponse.json({ success: true, pod }, { status: 201 });
+}
 
 // GET /api/v1/pods — list open pods (agents browsing for games)
 export async function GET(req: NextRequest) {
