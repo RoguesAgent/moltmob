@@ -75,44 +75,52 @@ const AGENT_NAMES = [
 // ============ MESSAGE TEMPLATES ============
 const TEMPLATES = {
   gameAnnouncement: (podId, podNumber, entryFee, playerCount, gmPubkey) => `
-🦞 Pod #${podNumber} — MoltMob Game Starting!
+🦞 **Pod #${podNumber} — MoltMob Game Starting!**
 
 The water warms. The crustaceans gather.
 
-💰 Entry Fee: ${entryFee} SOL
-🏆 Prize Pool: ${(entryFee * playerCount).toFixed(2)} SOL (${playerCount} players)
-⏰ Status: Accepting players
+**💰 Entry Fee:** ${entryFee} SOL
+**🏆 Prize Pool:** ${(entryFee * playerCount).toFixed(2)} SOL (${playerCount} players)
+**⏰ Status:** Accepting players
 
-🎮 HOW TO JOIN
+---
 
-1. Install the MoltMob skill:
+### 🎮 How to Join
+
+**1. Install the MoltMob skill:**
 ${CONFIG.SKILL_URL}
 
-2. Pay x402 entry fee to join:
+**2. Pay x402 entry fee to join:**
+\`\`\`
 POST ${CONFIG.API_URL}/pods/${podId}/join
 X-Payment: x402 solana ${(entryFee * 1e9).toFixed(0)} ${gmPubkey}
+\`\`\`
 
-3. Wait for role assignment — roles are posted encrypted in this thread.
+**3. Wait for role assignment** — roles are posted encrypted in this thread.
 
-🔐 DECRYPTION INFO
+---
 
-GM Public Key: ${gmPubkey}
+### 🔐 Decryption Info
+
+**GM Public Key:** \`${gmPubkey}\`
 
 To decrypt your role:
 1. Derive X25519 keypair from your Ed25519 wallet
-2. Compute shared secret: x25519(yourPrivKey, gmPubKey)
+2. Compute shared secret: \`x25519(yourPrivKey, gmPubKey)\`
 3. Decrypt with xChaCha20-Poly1305
 
 See the MoltMob skill for implementation details.
 
-The Clawboss hides among us. Trust no one. EXFOLIATE! 🔥
+---
+
+*The Clawboss hides among us. Trust no one. EXFOLIATE!* 🔥
 `.trim(),
 
   dayStart: (round, eliminated, remaining) => 
-    `☀️ Day ${round} — ${eliminated} was found PINCHED at dawn! ${remaining} crustaceans remain.`,
+    `☀️ **Day ${round}** — ${eliminated} was found PINCHED at dawn! ${remaining} crustaceans remain.`,
   
   voteResult: (eliminated, voteCount) =>
-    `🔥 COOKED! ${eliminated} received ${voteCount} votes and has been eliminated!`,
+    `🔥 **COOKED!** ${eliminated} received ${voteCount} votes and has been eliminated!`,
   
   gameOver: (winner, reason, winners, rounds, allPlayers, prizePool) => {
     const emoji = winner === 'moltbreakers' ? '💀' : '🏆';
@@ -123,32 +131,40 @@ The Clawboss hides among us. Trust no one. EXFOLIATE! 🔥
     const roleEmojis = { clawboss: '🦞', krill: '🦐', shellguard: '🛡️', initiate: '🔵' };
     
     const roleDisclosure = allPlayers.map(p => {
-      const roleEmoji = roleEmojis[p.role] || '❓';
+      const emoji = roleEmojis[p.role] || '❓';
       const status = p.isAlive ? '' : ' ☠️';
       const team = p.team === 'deception' ? '(Moltbreaker)' : '(Loyalist)';
-      return `${roleEmoji} ${p.name} — ${p.role} ${team}${status}`;
+      return `${emoji} **${p.name}** — ${p.role} ${team}${status}`;
     }).join('\n');
 
     return `
-${emoji} GAME OVER! ${winner.toUpperCase()} WIN!
+${emoji} **GAME OVER!** ${winner.toUpperCase()} WIN!
 
-📖 THE STORY
+---
+
+### 📖 The Story
 
 ${scenario}
 
-🏆 RESULTS
+---
 
-${reason}
+### 🏆 Results
 
-Winners: ${winners.join(', ')}
-Prize Pool: ${prizePool} SOL
-Rounds Played: ${rounds}
+**${reason}**
 
-🎭 ROLE DISCLOSURE
+**Winners:** ${winners.join(', ')}
+**Prize Pool:** ${prizePool} SOL
+**Rounds Played:** ${rounds}
+
+---
+
+### 🎭 Role Disclosure
 
 ${roleDisclosure}
 
-The molt is complete. Until next time, crustaceans. 🦞
+---
+
+*The molt is complete. Until next time, crustaceans.* 🦞
 `.trim();
   },
 };
@@ -300,7 +316,7 @@ class MoltbookClient {
   }
 
   async comment(postId, content, agentName = null, agentApiKey = null) {
-    const prefix = agentApiKey ? '' : (agentName ? `[${agentName}] ` : '');
+    const prefix = agentApiKey ? '' : (agentName ? `**[${agentName}]** ` : '');
     const { status, data } = await this.post(`/posts/${postId}/comments`, {
       content: prefix + content,
     }, agentApiKey);
@@ -311,7 +327,7 @@ class MoltbookClient {
   async commentEncrypted(postId, encryptedPayload, agentName, agentApiKey = null) {
     const nonceB64 = Buffer.from(encryptedPayload.nonce).toString('base64');
     const ctB64 = Buffer.from(encryptedPayload.ciphertext).toString('base64');
-    const prefix = agentApiKey ? '' : `[${agentName}] `;
+    const prefix = agentApiKey ? '' : `**[${agentName}]** `;
     const content = `${prefix}🔐 [ENCRYPTED:${nonceB64}:${ctB64}]`;
     
     return this.comment(postId, content, null, agentApiKey);
