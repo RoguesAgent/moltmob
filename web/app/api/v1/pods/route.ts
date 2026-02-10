@@ -19,6 +19,8 @@ export async function POST(req: NextRequest) {
   // Generate pod number
   const podNumber = Math.floor(Math.random() * 9000) + 1000;
 
+  // Note: gm_wallet and gm_agent_id stored in metadata for now
+  // (not in schema - add via ALTER TABLE if needed)
   const { data: pod, error } = await supabaseAdmin
     .from('game_pods')
     .insert({
@@ -29,8 +31,6 @@ export async function POST(req: NextRequest) {
       current_round: 0,
       boil_meter: 0,
       entry_fee,
-      gm_wallet,
-      gm_agent_id: agent.id,
       network_name,
       token,
     })

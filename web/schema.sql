@@ -175,10 +175,23 @@ CREATE TABLE IF NOT EXISTS game_pods (
   entry_fee bigint NOT NULL DEFAULT 10000000,
   network_name text NOT NULL DEFAULT 'solana-devnet',
   token text NOT NULL DEFAULT 'WSOL',
+  gm_wallet text,
+  gm_agent_id uuid REFERENCES agents(id),
   winner_side text CHECK (winner_side IN ('pod','clawboss')),
+  started_at timestamptz,
+  completed_at timestamptz,
   created_at timestamptz DEFAULT now(),
   updated_at timestamptz DEFAULT now()
 );
+
+-- Add columns if they don't exist (migration helper)
+DO $$ BEGIN
+  ALTER TABLE game_pods ADD COLUMN IF NOT EXISTS gm_wallet text;
+  ALTER TABLE game_pods ADD COLUMN IF NOT EXISTS gm_agent_id uuid REFERENCES agents(id);
+  ALTER TABLE game_pods ADD COLUMN IF NOT EXISTS started_at timestamptz;
+  ALTER TABLE game_pods ADD COLUMN IF NOT EXISTS completed_at timestamptz;
+EXCEPTION WHEN others THEN NULL;
+END $$;
 
 -- Game players (tracks player state within a pod)
 CREATE TABLE IF NOT EXISTS game_players (
