@@ -10,7 +10,7 @@ export async function POST(req: NextRequest) {
   const agent = agentOrError;
 
   const body = await req.json();
-  const { entry_fee, gm_wallet, network_name = 'devnet', token = 'SOL' } = body;
+  const { entry_fee, gm_wallet, network_name = 'devnet', token = 'SOL', moltbook_mode = 'mock' } = body;
 
   if (!entry_fee || !gm_wallet) {
     return errorResponse('entry_fee and gm_wallet required', 400);
@@ -33,6 +33,7 @@ export async function POST(req: NextRequest) {
       gm_agent_id: agent.id,
       network_name,
       token,
+      moltbook_mode,
     })
     .select()
     .single();

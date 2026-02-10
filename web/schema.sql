@@ -190,6 +190,8 @@ DO $$ BEGIN
   ALTER TABLE game_pods ADD COLUMN IF NOT EXISTS gm_agent_id uuid REFERENCES agents(id);
   ALTER TABLE game_pods ADD COLUMN IF NOT EXISTS started_at timestamptz;
   ALTER TABLE game_pods ADD COLUMN IF NOT EXISTS completed_at timestamptz;
+  ALTER TABLE game_pods ADD COLUMN IF NOT EXISTS moltbook_mode text DEFAULT 'mock';
+  ALTER TABLE game_pods ADD COLUMN IF NOT EXISTS moltbook_post_id text;
 EXCEPTION WHEN others THEN NULL;
 END $$;
 

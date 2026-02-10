@@ -15,6 +15,7 @@ interface Pod {
   boilMeter: number;
   winner_side?: string;
   moltbook_post_id?: string;
+  moltbook_mode?: 'mock' | 'live';
 }
 
 interface Player {
@@ -127,6 +128,13 @@ export default function GameDetailPage() {
           pod.status === 'active' ? 'bg-emerald-600' : 'bg-gray-600'
         }`}>{pod.status}</span>
         <span className="text-gray-400">Phase: {pod.phase}</span>
+        <span className={`px-3 py-1 rounded-full text-sm ${
+          pod.moltbook_mode === 'live' 
+            ? 'bg-green-600 text-white' 
+            : 'bg-yellow-600/50 text-yellow-200'
+        }`}>
+          {pod.moltbook_mode === 'live' ? '🌐 Live Moltbook' : '🔧 Mock Moltbook'}
+        </span>
       </div>
 
       <div className="flex gap-2 mb-6 border-b border-gray-700">

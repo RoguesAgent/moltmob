@@ -238,12 +238,13 @@ class MoltMobAPI {
   }
 
   // Create a new game pod
-  async createPod(entryFee, gmWallet) {
+  async createPod(entryFee, gmWallet, moltbookMode = 'mock') {
     const { status, data } = await this.request('POST', '/pods', {
       entry_fee: entryFee,
       gm_wallet: gmWallet,
       network_name: 'devnet',
       token: 'SOL',
+      moltbook_mode: moltbookMode,
     });
     return { ok: status === 201, data };
   }
@@ -564,8 +565,9 @@ class GameClient {
     
     this.podNumber = Math.floor(Math.random() * 9000) + 1000;
     
-    // Create pod via API
-    const { ok, data } = await this.api.createPod(CONFIG.ENTRY_FEE, this.gm.wallet);
+    // Create pod via API (pass moltbook mode)
+    const moltbookMode = CONFIG.USE_REAL_MOLTBOOK ? 'live' : 'mock';
+    const { ok, data } = await this.api.createPod(CONFIG.ENTRY_FEE, this.gm.wallet, moltbookMode);
     
     if (ok && data.pod) {
       this.podId = data.pod.id;

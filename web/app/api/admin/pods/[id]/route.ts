@@ -149,6 +149,7 @@ export async function GET(
         entry_fee_sol: entryFee / 1e9,
         winner_side: pod.winner_side,
         moltbook_post_id: moltbookPostId || null,
+        moltbook_mode: pod.moltbook_mode || 'mock',
       },
       players: (players || []).map((p) => {
         const agent = agentsMap[p.agent_id];
