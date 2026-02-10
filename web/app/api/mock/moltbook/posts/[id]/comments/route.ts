@@ -7,14 +7,40 @@ import { randomUUID } from 'crypto';
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // Auth check for mock API - supports both API key and MOCK_API_SECRET
-async function getAgentFromAuth(req: NextRequest): Promise<{ id: string; name: string } | null> {
+async function getAgentFromAuth(req: NextRequest, authorName?: string): Promise<{ id: string; name: string } | null> {
   const authHeader = req.headers.get('authorization');
-  const apiKey = authHeader?.replace('Bearer ', '');
+  const xApiKey = req.headers.get('x-api-key');
+  const apiKey = authHeader?.replace('Bearer ', '') || xApiKey;
   
   if (!apiKey) return null;
   
-  // Check for mock API secret (allows GM to post without registered key)
+  // Check for mock API secret (allows GM to post as any agent)
   if (process.env.MOCK_API_SECRET && apiKey === process.env.MOCK_API_SECRET) {
+    // If author_name specified, find or create that agent
+    if (authorName) {
+      const { data: existingAgent } = await supabaseAdmin
+        .from('agents')
+        .select('id, name')
+        .eq('name', authorName)
+        .single();
+      
+      if (existingAgent) return existingAgent;
+      
+      // Create mock agent for testing
+      const { data: newAgent } = await supabaseAdmin
+        .from('agents')
+        .insert({
+          name: authorName,
+          api_key: `mock_${randomUUID().replace(/-/g, '')}`,
+          wallet_pubkey: 'mock_' + authorName,
+        })
+        .select('id, name')
+        .single();
+      
+      return newAgent || { id: 'mock-' + authorName, name: authorName };
+    }
+    
+    // Default to GM
     const { data: gmAgent } = await supabaseAdmin
       .from('agents')
       .select('id, name')
@@ -35,14 +61,14 @@ async function getAgentFromAuth(req: NextRequest): Promise<{ id: string; name: s
 // GET /api/mock/moltbook/posts/:id/comments
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const agent = await getAgentFromAuth(req);
   if (!agent) {
     return NextResponse.json({ success: false, error: 'Invalid API key', code: 401 }, { status: 401 });
   }
 
-  const { id } = params;
+  const { id } = await params;
   if (!UUID_REGEX.test(id)) {
     return NextResponse.json({ success: false, error: 'Invalid post ID format', code: 400 }, { status: 400 });
   }
@@ -92,20 +118,27 @@ export async function GET(
 // POST /api/mock/moltbook/posts/:id/comments
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const agent = await getAgentFromAuth(req);
-  if (!agent) {
-    return NextResponse.json({ success: false, error: 'Invalid API key', code: 401 }, { status: 401 });
-  }
-
-  const { id } = params;
+  const { id } = await params;
   if (!UUID_REGEX.test(id)) {
     return NextResponse.json({ success: false, error: 'Invalid post ID format', code: 400 }, { status: 400 });
   }
 
+  let body: any;
   try {
-    const body = await req.json();
+    body = await req.json();
+  } catch {
+    return NextResponse.json({ success: false, error: 'Invalid JSON body', code: 400 }, { status: 400 });
+  }
+
+  // Get agent - pass author_name to allow posting as different agents
+  const agent = await getAgentFromAuth(req, body.author_name);
+  if (!agent) {
+    return NextResponse.json({ success: false, error: 'Invalid API key', code: 401 }, { status: 401 });
+  }
+
+  try {
 
     if (!body.content?.trim()) {
       return NextResponse.json({ success: false, error: 'Content is required', code: 400 }, { status: 400 });
