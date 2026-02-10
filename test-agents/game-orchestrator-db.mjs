@@ -452,6 +452,12 @@ class GameOrchestrator {
         const data = await res.json();
         const postId = data.post?.id || data.id;
         console.log(`  [Moltbook] ✓ Post created: ${postId}`);
+        
+        // Sync to local database for admin viewing
+        if (CONFIG.USE_REAL_MOLTBOOK && postId) {
+          await this.syncPostToDb(postId, title, content, submoltId, 'RoguesAgent');
+        }
+        
         return postId;
       } else {
         const errorText = await res.text();
@@ -461,6 +467,86 @@ class GameOrchestrator {
       console.log(`  [Moltbook] Could not post (API may be offline): ${err.message}`);
     }
     return null;
+  }
+
+  async syncPostToDb(postId, title, content, submoltId, authorName) {
+    // Mirror Moltbook post to local database for admin viewing
+    try {
+      // Get or create a system agent for synced posts
+      let systemAgent = await this.db.select('agents', `?name=eq.RoguesAgent&select=id`);
+      let authorId;
+      
+      if (systemAgent && systemAgent.length > 0) {
+        authorId = systemAgent[0].id;
+      } else {
+        // Create RoguesAgent in local DB if doesn't exist
+        const created = await this.db.insert('agents', {
+          name: 'RoguesAgent',
+          api_key: `system_${randomUUID().slice(0, 16)}`,
+          wallet_pubkey: CONFIG.GM_WALLET || 'system',
+          balance: 0
+        });
+        authorId = created[0].id;
+      }
+      
+      // Insert the post
+      await this.db.insert('posts', {
+        id: postId, // Use the real Moltbook post ID
+        title: title,
+        content: content,
+        author_id: authorId,
+        submolt_id: submoltId,
+        upvotes: 0,
+        downvotes: 0,
+        comment_count: 0
+      });
+      
+      console.log(`  [Sync] ✓ Post synced to local DB: ${postId}`);
+    } catch (err) {
+      // May fail if post already exists - that's OK
+      if (!err.message?.includes('duplicate')) {
+        console.log(`  [Sync] Could not sync post: ${err.message}`);
+      }
+    }
+  }
+
+  async syncCommentToDb(postId, content, authorName) {
+    // Mirror Moltbook comment to local database
+    try {
+      // Get or create author
+      let agent = await this.db.select('agents', `?name=eq.${encodeURIComponent(authorName)}&select=id`);
+      let authorId;
+      
+      if (agent && agent.length > 0) {
+        authorId = agent[0].id;
+      } else {
+        // Use RoguesAgent as fallback author
+        const rogues = await this.db.select('agents', `?name=eq.RoguesAgent&select=id`);
+        authorId = rogues?.[0]?.id;
+      }
+      
+      if (!authorId) return;
+      
+      // Insert comment
+      await this.db.insert('comments', {
+        content: content,
+        author_id: authorId,
+        post_id: postId,
+        upvotes: 0,
+        downvotes: 0
+      });
+      
+      // Update comment count
+      const post = await this.db.select('posts', `?id=eq.${postId}&select=comment_count`);
+      if (post && post.length > 0) {
+        await this.db.update('posts', 
+          { comment_count: (post[0].comment_count || 0) + 1 }, 
+          `?id=eq.${postId}`
+        );
+      }
+    } catch (err) {
+      // Silently fail - syncing is best-effort
+    }
   }
 
   async commentOnMoltbook(postId, content, agentName = null) {
@@ -473,7 +559,7 @@ class GameOrchestrator {
     // If agent name provided, prefix the comment (for real Moltbook where GM posts on behalf of agents)
     const finalContent = agentName && CONFIG.USE_REAL_MOLTBOOK 
       ? `**${agentName}**: ${content}`
-      : content;
+      : (agentName ? `**${agentName}**: ${content}` : content);
     
     try {
       const url = `${CONFIG.MOLTBOOK_API_URL}/posts/${postId}/comments`;
@@ -486,7 +572,12 @@ class GameOrchestrator {
         body: JSON.stringify({ content: finalContent })
       });
       
-      if (!res.ok && CONFIG.USE_REAL_MOLTBOOK) {
+      if (res.ok) {
+        // Sync to local database for admin viewing
+        if (CONFIG.USE_REAL_MOLTBOOK) {
+          await this.syncCommentToDb(postId, finalContent, agentName || 'RoguesAgent');
+        }
+      } else if (CONFIG.USE_REAL_MOLTBOOK) {
         const errorText = await res.text();
         console.log(`  [Moltbook] Comment failed: ${errorText.slice(0, 100)}`);
       }
@@ -542,9 +633,20 @@ class GameOrchestrator {
     this.podId = podData[0].id;
     console.log(`✓ Pod #${this.podNumber} created (ID: ${this.podId})`);
     
+    // Create Moltbook post for the game first
+    this.moltbookPostId = await this.postToMoltbook(
+      `🦞 Pod #${this.podNumber} - Game Starting!`,
+      `The water warms. ${this.agents.length} crustaceans have gathered.\n\n` +
+      `Entry fee: ${CONFIG.ENTRY_FEE / LAMPORTS_PER_SOL} SOL\n` +
+      `Prize pool: ${(CONFIG.ENTRY_FEE * this.agents.length) / LAMPORTS_PER_SOL} SOL\n\n` +
+      `Players: ${this.agents.map(a => a.name).join(', ')}\n\n` +
+      `The Clawboss hides among us. EXFOLIATE! 🔥`
+    );
+
     await this.createGMEvent('game_start', `🦞 Pod #${this.podNumber} created - ${this.agents.length} agents joining`, {
       pod_number: this.podNumber,
-      player_count: this.agents.length
+      player_count: this.agents.length,
+      moltbook_post_id: this.moltbookPostId // Store for admin lookup
     }, 0, 'lobby');
     
     // Register players in pod
@@ -562,19 +664,6 @@ class GameOrchestrator {
     await this.createGMEvent('announcement', `${this.agents.length} agents have entered the pod`, {
       agents: this.agents.map(a => a.name)
     }, 0, 'lobby');
-    
-    // Create Moltbook post for the game
-    this.moltbookPostId = await this.postToMoltbook(
-      `🦞 Pod #${this.podNumber} - Game Starting!`,
-      `The water warms. ${this.agents.length} crustaceans have gathered.\n\n` +
-      `Entry fee: ${CONFIG.ENTRY_FEE / LAMPORTS_PER_SOL} SOL\n` +
-      `Prize pool: ${(CONFIG.ENTRY_FEE * this.agents.length) / LAMPORTS_PER_SOL} SOL\n\n` +
-      `Players: ${this.agents.map(a => a.name).join(', ')}\n\n` +
-      `The Clawboss hides among us. EXFOLIATE! 🔥`
-    );
-    if (this.moltbookPostId) {
-      console.log(`✓ Moltbook post created: ${this.moltbookPostId}`);
-    }
     
     await this.sleep(CONFIG.PHASE_DURATION.LOBBY);
   }

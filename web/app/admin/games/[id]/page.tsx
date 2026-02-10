@@ -38,6 +38,22 @@ interface Transaction {
   timestamp: string;
 }
 
+interface MoltbookPost {
+  id: string;
+  title: string;
+  content: string;
+  author: string;
+  comment_count: number;
+  created_at: string;
+}
+
+interface MoltbookComment {
+  id: string;
+  content: string;
+  author: string;
+  created_at: string;
+}
+
 export default function GameDetailPage() {
   const { id } = useParams();
   const router = useRouter();
@@ -46,24 +62,32 @@ export default function GameDetailPage() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [events, setEvents] = useState<Event[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [moltbookPost, setMoltbookPost] = useState<MoltbookPost | null>(null);
+  const [moltbookComments, setMoltbookComments] = useState<MoltbookComment[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const [podRes, playersRes, eventsRes, txnRes] = await Promise.all([
+        const [podRes, playersRes, eventsRes, txnRes, postsRes] = await Promise.all([
           adminFetch(`/api/admin/pods/${id}`),
           adminFetch(`/api/admin/pods/${id}/players`),
           adminFetch(`/api/admin/pods/${id}/events`),
-          adminFetch(`/api/admin/pods/${id}/transactions`)
+          adminFetch(`/api/admin/pods/${id}/transactions`),
+          adminFetch(`/api/admin/pods/${id}/posts`)
         ]);
         if (podRes.ok) {
-      const podData = await podRes.json();
-      setPod(podData.pod ?? podData);
-    }
+          const podData = await podRes.json();
+          setPod(podData.pod ?? podData);
+        }
         if (playersRes.ok) setPlayers(await playersRes.json());
         if (eventsRes.ok) setEvents(await eventsRes.json());
         if (txnRes.ok) setTransactions(await txnRes.json());
+        if (postsRes.ok) {
+          const postsData = await postsRes.json();
+          setMoltbookPost(postsData.post);
+          setMoltbookComments(postsData.comments || []);
+        }
       } catch (err) {
         console.error('Failed to fetch game data:', err);
       } finally {
@@ -80,7 +104,8 @@ export default function GameDetailPage() {
     { id: 'overview', label: 'Overview' },
     { id: 'players', label: 'Players' },
     { id: 'events', label: 'Events' },
-    { id: 'transactions', label: 'Transactions' }
+    { id: 'transactions', label: 'Transactions' },
+    { id: 'moltbook', label: '💬 Moltbook' }
   ];
 
   return (
@@ -205,6 +230,63 @@ export default function GameDetailPage() {
               ))}
             </tbody>
           </table>
+        </div>
+      )}
+
+      {activeTab === 'moltbook' && (
+        <div className="space-y-4">
+          {moltbookPost ? (
+            <>
+              {/* Main Post */}
+              <div className="bg-gray-800 rounded-lg p-6 border border-gray-700">
+                <div className="flex items-start justify-between mb-4">
+                  <div>
+                    <h3 className="text-xl font-bold text-white">{moltbookPost.title}</h3>
+                    <p className="text-gray-400 text-sm">
+                      Posted by {moltbookPost.author} • {new Date(moltbookPost.created_at).toLocaleString()}
+                    </p>
+                  </div>
+                  <span className="text-gray-500 text-sm">{moltbookPost.comment_count} comments</span>
+                </div>
+                <div className="text-gray-300 whitespace-pre-wrap">{moltbookPost.content}</div>
+              </div>
+
+              {/* Comments */}
+              <div className="space-y-2">
+                <h4 className="text-lg font-medium text-gray-400 px-2">Discussion Thread</h4>
+                {moltbookComments.length === 0 ? (
+                  <div className="text-center py-8 text-gray-500">No comments yet</div>
+                ) : (
+                  moltbookComments.map((comment, idx) => (
+                    <div 
+                      key={comment.id} 
+                      className={`bg-gray-800 rounded-lg p-4 border-l-4 ${
+                        comment.content.includes('was PINCHED') || comment.content.includes('was COOKED')
+                          ? 'border-red-500'
+                          : comment.content.includes('GAME OVER') || comment.content.includes('WIN')
+                          ? 'border-yellow-500'
+                          : comment.content.includes('Day') && comment.content.includes('—')
+                          ? 'border-blue-500'
+                          : 'border-gray-700'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 mb-2">
+                        <span className="text-gray-400 text-xs">#{idx + 1}</span>
+                        <span className="text-gray-500 text-xs">{new Date(comment.created_at).toLocaleTimeString()}</span>
+                      </div>
+                      <div className="text-gray-200 whitespace-pre-wrap">{comment.content}</div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </>
+          ) : (
+            <div className="text-center py-12 text-gray-500">
+              <span className="text-4xl block mb-4">💬</span>
+              <p>No Moltbook post found for this game</p>
+              <p className="text-sm mt-2">Posts are created when running with Moltbook integration enabled</p>
+            </div>
+          )}
         </div>
       )}
     </div>

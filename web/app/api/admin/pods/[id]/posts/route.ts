@@ -1,83 +1,116 @@
-// GET /api/admin/pods/[id]/posts - Get posts for a specific pod
+// GET /api/admin/pods/[id]/posts - Get Moltbook posts and comments for a game
 import { NextRequest, NextResponse } from 'next/server';
-import { supabaseAdmin } from '@/lib/supabase';
+import { createClient } from '@supabase/supabase-js';
 import { requireAdminAuth } from '@/lib/api/admin-auth';
+
+export const runtime = 'nodejs';
+
+function getSupabase() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) throw new Error('Supabase env vars not set');
+  return createClient(url, key);
+}
 
 export async function GET(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   const authError = requireAdminAuth(req);
   if (authError) return authError;
 
-  const podId = params.id;
+  const { id: podId } = await params;
+  const supabaseAdmin = getSupabase();
 
   try {
-    // Get GM events for this pod
-    const { data: gmEvents, error: eventsError } = await supabaseAdmin
+    // First, get the game start event which may have the moltbook_post_id
+    const { data: startEvent } = await supabaseAdmin
       .from('gm_events')
-      .select('id')
-      .eq('pod_id', podId);
+      .select('details')
+      .eq('pod_id', podId)
+      .eq('event_type', 'game_start')
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .single();
 
-    if (eventsError) {
-      return NextResponse.json({ error: eventsError.message }, { status: 500 });
+    // Also check for posts that mention this pod number
+    const { data: pod } = await supabaseAdmin
+      .from('game_pods')
+      .select('pod_number')
+      .eq('id', podId)
+      .single();
+
+    if (!pod) {
+      return NextResponse.json({ error: 'Pod not found' }, { status: 404 });
     }
 
-    const eventIds = (gmEvents || []).map(e => e.id);
+    // Try to find the game post by:
+    // 1. moltbook_post_id from game_start event
+    // 2. Posts with title containing the pod number
+    let moltbookPostId = startEvent?.details?.moltbook_post_id;
     
-    if (eventIds.length === 0) {
-      return NextResponse.json([]);
+    if (!moltbookPostId) {
+      // Search for posts mentioning this pod
+      const { data: matchingPosts } = await supabaseAdmin
+        .from('posts')
+        .select('id, title')
+        .ilike('title', `%Pod #${pod.pod_number}%`)
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (matchingPosts && matchingPosts.length > 0) {
+        moltbookPostId = matchingPosts[0].id;
+      }
     }
 
-    // Get posts linked to those events
-    const { data: posts, error: postsError } = await supabaseAdmin
+    if (!moltbookPostId) {
+      return NextResponse.json({ 
+        post: null, 
+        comments: [],
+        message: 'No Moltbook post found for this game'
+      });
+    }
+
+    // Get the post
+    const { data: post } = await supabaseAdmin
       .from('posts')
-      .select('*')
-      .in('gm_event_id', eventIds)
-      .order('created_at', { ascending: false });
+      .select('*, author:agents!author_id(id, name)')
+      .eq('id', moltbookPostId)
+      .single();
 
-    if (postsError) {
-      return NextResponse.json({ error: postsError.message }, { status: 500 });
-    }
+    // Get comments
+    const { data: comments } = await supabaseAdmin
+      .from('comments')
+      .select('*, author:agents!author_id(id, name)')
+      .eq('post_id', moltbookPostId)
+      .order('created_at', { ascending: true });
 
-    // Get author names
-    const authorIds = [...new Set((posts || []).map(p => p.author_id).filter(Boolean))];
-    const { data: agents } = await supabaseAdmin
-      .from('agents')
-      .select('id, name')
-      .in('id', authorIds);
+    const formatAuthor = (author: any) => {
+      if (Array.isArray(author)) return author[0];
+      return author;
+    };
 
-    const agentsMap = (agents || []).reduce((acc, a) => {
-      acc[a.id] = a.name;
-      return acc;
-    }, {} as Record<string, string>);
-
-    // Get submolt names
-    const submoltIds = [...new Set((posts || []).map(p => p.submolt_id).filter(Boolean))];
-    const { data: submolts } = await supabaseAdmin
-      .from('submolts')
-      .select('id, name, display_name')
-      .in('id', submoltIds);
-
-    const submoltsMap = (submolts || []).reduce((acc, s) => {
-      acc[s.id] = s;
-      return acc;
-    }, {} as Record<string, any>);
-
-    // Enrich posts
-    const enriched = (posts || []).map(p => ({
-      id: p.id,
-      title: p.title,
-      content: p.content,
-      author_id: p.author_id,
-      author_name: agentsMap[p.author_id] || 'Unknown',
-      submolt: submoltsMap[p.submolt_id] || null,
-      created_at: p.created_at,
-    }));
-
-    return NextResponse.json(enriched);
+    return NextResponse.json({
+      post: post ? {
+        id: post.id,
+        title: post.title,
+        content: post.content,
+        author: formatAuthor(post.author)?.name || 'Unknown',
+        upvotes: post.upvotes,
+        downvotes: post.downvotes,
+        comment_count: post.comment_count,
+        created_at: post.created_at
+      } : null,
+      comments: (comments || []).map((c: any) => ({
+        id: c.id,
+        content: c.content,
+        author: formatAuthor(c.author)?.name || 'Unknown',
+        created_at: c.created_at
+      }))
+    });
 
   } catch (err) {
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    console.error('[Admin Posts] Error:', err);
+    return NextResponse.json({ error: 'Failed to fetch posts' }, { status: 500 });
   }
 }
