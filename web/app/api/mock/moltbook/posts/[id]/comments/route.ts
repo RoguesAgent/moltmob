@@ -6,7 +6,24 @@ import { randomUUID } from 'crypto';
 
 const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-async function getAgentFromKey(apiKey: string) {
+// Auth check for mock API - supports both API key and MOCK_API_SECRET
+async function getAgentFromAuth(req: NextRequest): Promise<{ id: string; name: string } | null> {
+  const authHeader = req.headers.get('authorization');
+  const apiKey = authHeader?.replace('Bearer ', '');
+  
+  if (!apiKey) return null;
+  
+  // Check for mock API secret (allows GM to post without registered key)
+  if (process.env.MOCK_API_SECRET && apiKey === process.env.MOCK_API_SECRET) {
+    const { data: gmAgent } = await supabaseAdmin
+      .from('agents')
+      .select('id, name')
+      .eq('name', 'MoltMob_GM')
+      .single();
+    return gmAgent || { id: 'mock-gm', name: 'MoltMob_GM' };
+  }
+  
+  // Otherwise check API key in database
   const { data: agent } = await supabaseAdmin
     .from('agents')
     .select('id, name, api_key')
@@ -20,14 +37,7 @@ export async function GET(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const authHeader = req.headers.get('authorization');
-  const apiKey = authHeader?.replace('Bearer ', '');
-  
-  if (!apiKey) {
-    return NextResponse.json({ success: false, error: 'API key required', code: 401 }, { status: 401 });
-  }
-
-  const agent = await getAgentFromKey(apiKey);
+  const agent = await getAgentFromAuth(req);
   if (!agent) {
     return NextResponse.json({ success: false, error: 'Invalid API key', code: 401 }, { status: 401 });
   }
@@ -84,14 +94,7 @@ export async function POST(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const authHeader = req.headers.get('authorization');
-  const apiKey = authHeader?.replace('Bearer ', '');
-  
-  if (!apiKey) {
-    return NextResponse.json({ success: false, error: 'API key required', code: 401 }, { status: 401 });
-  }
-
-  const agent = await getAgentFromKey(apiKey);
+  const agent = await getAgentFromAuth(req);
   if (!agent) {
     return NextResponse.json({ success: false, error: 'Invalid API key', code: 401 }, { status: 401 });
   }

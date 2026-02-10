@@ -4,8 +4,25 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { randomUUID } from 'crypto';
 
-// Simple auth check for mock API
-async function getAgentFromKey(apiKey: string) {
+// Auth check for mock API - supports both API key and MOCK_API_SECRET
+async function getAgentFromAuth(req: NextRequest): Promise<{ id: string; name: string } | null> {
+  const authHeader = req.headers.get('authorization');
+  const apiKey = authHeader?.replace('Bearer ', '');
+  
+  if (!apiKey) return null;
+  
+  // Check for mock API secret (allows GM to post without registered key)
+  if (process.env.MOCK_API_SECRET && apiKey === process.env.MOCK_API_SECRET) {
+    // Return a GM agent
+    const { data: gmAgent } = await supabaseAdmin
+      .from('agents')
+      .select('id, name')
+      .eq('name', 'MoltMob_GM')
+      .single();
+    return gmAgent || { id: 'mock-gm', name: 'MoltMob_GM' };
+  }
+  
+  // Otherwise check API key in database
   const { data: agent } = await supabaseAdmin
     .from('agents')
     .select('id, name, api_key')
@@ -16,14 +33,7 @@ async function getAgentFromKey(apiKey: string) {
 
 // GET /api/mock/moltbook/posts?sort=hot|new&limit=N&offset=N&submolt=name
 export async function GET(req: NextRequest) {
-  const authHeader = req.headers.get('authorization');
-  const apiKey = authHeader?.replace('Bearer ', '');
-  
-  if (!apiKey) {
-    return NextResponse.json({ success: false, error: 'API key required', code: 401 }, { status: 401 });
-  }
-
-  const agent = await getAgentFromKey(apiKey);
+  const agent = await getAgentFromAuth(req);
   if (!agent) {
     return NextResponse.json({ success: false, error: 'Invalid API key', code: 401 }, { status: 401 });
   }
@@ -104,14 +114,7 @@ export async function GET(req: NextRequest) {
 
 // POST /api/mock/moltbook/posts
 export async function POST(req: NextRequest) {
-  const authHeader = req.headers.get('authorization');
-  const apiKey = authHeader?.replace('Bearer ', '');
-  
-  if (!apiKey) {
-    return NextResponse.json({ success: false, error: 'API key required', code: 401 }, { status: 401 });
-  }
-
-  const agent = await getAgentFromKey(apiKey);
+  const agent = await getAgentFromAuth(req);
   if (!agent) {
     return NextResponse.json({ success: false, error: 'Invalid API key', code: 401 }, { status: 401 });
   }
