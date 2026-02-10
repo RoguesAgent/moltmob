@@ -679,7 +679,7 @@ class GameClient {
         
         // Join pod via API (wallet pubkey header + tx_signature + memo)
         const agentApi = new MoltMobAPI();
-        const walletPubkey = agent.wallet.publicKey.toBase58();
+        const walletPubkey = agent.wallet;  // Already a string
         const { ok, data } = await agentApi.joinPod(this.podId, txSig, memo, walletPubkey);
         
         if (ok) {
