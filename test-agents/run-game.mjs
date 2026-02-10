@@ -815,9 +815,22 @@ class GameClient {
         await this.sleep(CONFIG.VOTE_DELAY_MS);
       }
       
+      // GM decrypts the message
+      const sharedSecret = computeSharedSecret(this.gm.x25519Priv, agent.x25519Pub);
+      const decryptedBytes = decrypt(sharedSecret, encrypted.nonce, encrypted.ciphertext);
+      const decryptedPayload = JSON.parse(new TextDecoder().decode(decryptedBytes));
+      
+      // Record GM decryption event
+      await this.api.recordEvent(this.podId, 'message_decrypted', this.currentRound, 'night', {
+        from_agent: agent.name,
+        from_agent_id: agent.agentId,
+        message_type: 'night_action',
+        decrypted: decryptedPayload,
+      });
+      
       // Only log clawboss target (others just "submitted")
       if (agent.role === 'clawboss' && killTarget) {
-        console.log(`    ${agent.name} → targets ${killTarget.name}`);
+        console.log(`    ${agent.name} → targets ${killTarget.name} (decrypted)`);
         
         // Record action via API
         await this.api.submitAction(this.podId, 'kill', {
@@ -827,7 +840,7 @@ class GameClient {
           phase: 'night',
         });
       } else {
-        console.log(`    ${agent.name} → 💤`);
+        console.log(`    ${agent.name} → 💤 (decrypted)`);
       }
     }
     
@@ -905,12 +918,25 @@ class GameClient {
       const votePayload = JSON.stringify({ type: 'vote', target: target.name, round: this.currentRound });
       const encrypted = agent.encryptMessage(new TextEncoder().encode(votePayload));
       
-      console.log(`  ${agent.name} votes for ${target.name}`);
-      
       if (this.postId) {
         await this.moltbook.commentEncrypted(this.postId, encrypted, agent.name, agent.apiKey, this.currentRound);
         await this.sleep(CONFIG.VOTE_DELAY_MS);
       }
+      
+      // GM decrypts the vote
+      const sharedSecret = computeSharedSecret(this.gm.x25519Priv, agent.x25519Pub);
+      const decryptedBytes = decrypt(sharedSecret, encrypted.nonce, encrypted.ciphertext);
+      const decryptedPayload = JSON.parse(new TextDecoder().decode(decryptedBytes));
+      
+      console.log(`  ${agent.name} votes for ${target.name} (decrypted)`);
+      
+      // Record GM decryption event
+      await this.api.recordEvent(this.podId, 'message_decrypted', this.currentRound, 'vote', {
+        from_agent: agent.name,
+        from_agent_id: agent.agentId,
+        message_type: 'vote',
+        decrypted: decryptedPayload,
+      });
       
       // Record vote via API
       await this.api.submitAction(this.podId, 'vote', {
