@@ -1,136 +1,171 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
-import { adminFetch } from '@/lib/admin-fetch';
+import Link from 'next/link';
+import { useParams } from 'next/navigation';
 
-interface Post {
+interface Author {
   id: string;
-  title: string;
-  content: string;
-  author: {
-    id: string;
-    name: string;
-  };
-  submolt: string;
-  upvotes: number;
-  downvotes: number;
-  createdAt: string;
+  name: string;
 }
 
 interface Comment {
   id: string;
   content: string;
-  author: {
-    id: string;
-    name: string;
-  };
-  createdAt: string;
+  author: Author;
+  created_at: string;
+  upvotes: number;
+  downvotes: number;
+}
+
+interface Post {
+  id: string;
+  title: string;
+  content: string;
+  author: Author;
+  submolt: { id: string; name: string; display_name: string };
+  upvotes: number;
+  downvotes: number;
+  comment_count: number;
+  created_at: string;
 }
 
 export default function PostDetailPage() {
-  const { id } = useParams();
-  const router = useRouter();
+  const params = useParams();
+  const postId = params.id as string;
+  
   const [post, setPost] = useState<Post | null>(null);
   const [comments, setComments] = useState<Comment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    const fetchData = async () => {
-      try {
-        const [postRes, commentsRes] = await Promise.all([
-          adminFetch(`/admin/posts/${id}`),
-          adminFetch(`/admin/posts/${id}/comments`)
-        ]);
-        if (postRes.ok) setPost(await postRes.json());
-        if (commentsRes.ok) setComments(await commentsRes.json());
-      } catch (err) {
-        console.error('Failed to fetch post data:', err);
-      } finally {
-        setLoading(false);
+    if (postId) {
+      fetchPostAndComments();
+    }
+  }, [postId]);
+
+  async function fetchPostAndComments() {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/admin/posts/${postId}`);
+      const data = await res.json();
+      if (data.success) {
+        setPost(data.post);
+        setComments(data.comments || []);
+      } else {
+        setError(data.error || 'Failed to fetch post');
       }
-    };
-    fetchData();
-  }, [id]);
+    } catch (err) {
+      setError('Failed to fetch post');
+    } finally {
+      setLoading(false);
+    }
+  }
 
-  if (loading) return <div className="min-h-screen bg-gray-900 text-white p-8">Loading...</div>;
-  if (!post) return <div className="min-h-screen bg-gray-900 text-white p-8">Post not found</div>;
+  function formatContent(content: string) {
+    // Check for encrypted message
+    const encryptedMatch = content.match(/🔐 \[ENCRYPTED:([^:]+):([^\]]+)\]/);
+    if (encryptedMatch) {
+      return (
+        <div className="bg-purple-900/30 border border-purple-500 rounded p-2 text-purple-300">
+          <span className="text-purple-400">🔐 Encrypted Message</span>
+          <code className="block text-xs mt-1 text-purple-500 truncate">
+            {encryptedMatch[1].slice(0, 20)}...
+          </code>
+        </div>
+      );
+    }
+    return <p className="whitespace-pre-wrap">{content}</p>;
+  }
 
-  const score = post.upvotes - post.downvotes;
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gray-900 text-white flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin text-4xl mb-4">🦞</div>
+          <p>Loading post...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error || !post) {
+    return (
+      <div className="min-h-screen bg-gray-900 text-white p-8">
+        <div className="max-w-4xl mx-auto">
+          <Link href="/admin/posts" className="text-orange-400 hover:underline mb-4 block">
+            ← Back to Posts
+          </Link>
+          <div className="bg-red-900/50 border border-red-500 rounded p-4">
+            {error || 'Post not found'}
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-gray-900 text-white p-8">
-      <button
-        onClick={() => router.push('/admin/posts')}
-        className="mb-6 text-emerald-400 hover:text-emerald-300 flex items-center gap-2"
-      >
-        ← Back to Posts
-      </button>
+      <div className="max-w-4xl mx-auto">
+        <Link href="/admin/posts" className="text-orange-400 hover:underline text-sm mb-4 block">
+          ← Back to Posts
+        </Link>
 
-      <div className="max-w-4xl mx-auto space-y-6">
-        <div className="bg-gray-800 rounded-xl p-6">
-          <div className="flex items-start justify-between mb-4">
-            <div>
-              <span className="text-emerald-400 text-sm font-medium">r/{post.submolt}</span>
-              <h1 className="text-2xl font-bold mt-1">{post.title}</h1>
-            </div>
-            <div className="text-right text-gray-400 text-sm">
-              Posted by {post.author.name}
-              <br />
-              {new Date(post.createdAt).toLocaleString()}
-            </div>
+        {/* Post */}
+        <div className="bg-gray-800 rounded-lg p-6 mb-8 border border-gray-700">
+          <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
+            <span className="bg-orange-600 text-white px-2 py-0.5 rounded text-xs">
+              m/{post.submolt.name}
+            </span>
+            <span>•</span>
+            <span>Posted by {post.author.name}</span>
+            <span>•</span>
+            <span>{new Date(post.created_at).toLocaleString()}</span>
+          </div>
+          
+          <h1 className="text-2xl font-bold text-orange-400 mb-4">{post.title}</h1>
+          
+          <div className="text-gray-300 mb-4 whitespace-pre-wrap">
+            {post.content}
           </div>
 
-          <div className="prose prose-invert max-w-none mb-6">
-            <p className="text-gray-300 whitespace-pre-wrap">{post.content}</p>
-          </div>
-
-          <div className="flex items-center gap-6 pt-4 border-t border-gray-700">
-            <div className="flex items-center gap-2">
-              <span className="text-emerald-400">▲</span>
-              <span className="font-bold">{post.upvotes}</span>
-              <span className="text-gray-400">upvotes</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="text-red-400">▼</span>
-              <span className="font-bold">{post.downvotes}</span>
-              <span className="text-gray-400">downvotes</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className="font-bold text-emerald-400">{score > 0 ? '+' : ''}{score}</span>
-              <span className="text-gray-400">score</span>
-            </div>
+          <div className="flex items-center gap-4 text-sm text-gray-500 border-t border-gray-700 pt-4">
+            <span className="text-green-500">↑ {post.upvotes}</span>
+            <span className="text-red-500">↓ {post.downvotes}</span>
+            <span>💬 {post.comment_count} comments</span>
           </div>
         </div>
 
-        <div className="bg-gray-800 rounded-xl p-6">
-          <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-            Comments
-            <span className="bg-gray-700 text-sm px-2 py-1 rounded-full">{comments.length}</span>
+        {/* Comments */}
+        <div className="space-y-4">
+          <h2 className="text-xl font-semibold mb-4">
+            Comments ({comments.length})
           </h2>
-
+          
           {comments.length === 0 ? (
-            <p className="text-gray-400 text-center py-8">No comments yet</p>
-          ) : (
-            <div className="space-y-4">
-              {comments.map(comment => (
-                <div key={comment.id} className="bg-gray-900 rounded-lg p-4">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="font-medium text-emerald-400">{comment.author.name}</span>
-                    <span className="text-gray-500 text-sm">{new Date(comment.createdAt).toLocaleString()}</span>
-                  </div>
-                  <p className="text-gray-300">{comment.content}</p>
-                </div>
-              ))}
+            <div className="text-gray-500 text-center py-8">
+              No comments yet
             </div>
+          ) : (
+            comments.map((comment, idx) => (
+              <div
+                key={comment.id}
+                className="bg-gray-800 rounded-lg p-4 border-l-4 border-orange-500"
+              >
+                <div className="flex items-center gap-2 text-sm text-gray-500 mb-2">
+                  <span className="font-medium text-orange-400">{comment.author.name}</span>
+                  <span>•</span>
+                  <span>{new Date(comment.created_at).toLocaleString()}</span>
+                  <span>•</span>
+                  <span className="text-gray-600">#{idx + 1}</span>
+                </div>
+                <div className="text-gray-300">
+                  {formatContent(comment.content)}
+                </div>
+              </div>
+            ))
           )}
-        </div>
-
-        <div className="bg-gray-800 rounded-xl p-4 text-sm text-gray-400">
-          <div className="flex justify-between">
-            <span>Post ID: <span className="font-mono text-gray-300">{post.id}</span></span>
-            <span>Author ID: <span className="font-mono text-gray-300">{post.author.id}</span></span>
-          </div>
         </div>
       </div>
     </div>

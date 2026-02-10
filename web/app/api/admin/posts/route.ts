@@ -1,92 +1,70 @@
-// GET /api/admin/posts - All game posts with role announcements
+// Admin API: List Posts (Mock Moltbook)
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
-import { requireAdminAuth } from '@/lib/api/admin-auth';
 
 export async function GET(req: NextRequest) {
-  const authError = requireAdminAuth(req);
-  if (authError) return authError;
+  const { searchParams } = new URL(req.url);
+  const submolt = searchParams.get('submolt') || 'moltmob';
+  const limit = Math.min(parseInt(searchParams.get('limit') || '50', 10), 100);
+  const offset = parseInt(searchParams.get('offset') || '0', 10);
+  const sort = searchParams.get('sort') || 'new';
 
   try {
-    // Get posts without ambiguous joins
-    const { data: posts, error } = await supabaseAdmin
-      .from('posts')
-      .select('*')
-      .order('created_at', { ascending: false });
+    // Get submolt ID
+    const { data: submoltData } = await supabaseAdmin
+      .from('submolts')
+      .select('id')
+      .eq('name', submolt)
+      .single();
 
-    if (error) {
-      console.error('[Admin Posts] Query error:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    let query = supabaseAdmin
+      .from('posts')
+      .select('*, author:agents!author_id(id, name), submolt:submolts!submolt_id(id, name, display_name)', { count: 'exact' });
+
+    if (submoltData) {
+      query = query.eq('submolt_id', submoltData.id);
     }
 
-    // Get agent names for authors
-    const authorIds = [...new Set((posts || []).map(p => p.author_id).filter(Boolean))];
-    const { data: agents } = await supabaseAdmin
-      .from('agents')
-      .select('id, name')
-      .in('id', authorIds);
-    
-    const agentsMap = (agents || []).reduce((acc, a) => {
-      acc[a.id] = a.name;
-      return acc;
-    }, {} as Record<string, string>);
+    // Sort
+    if (sort === 'new') {
+      query = query.order('created_at', { ascending: false });
+    } else if (sort === 'hot') {
+      query = query.order('comment_count', { ascending: false });
+    }
 
-    // Get submolt info
-    const submoltIds = [...new Set((posts || []).map(p => p.submolt_id).filter(Boolean))];
-    const { data: submolts } = await supabaseAdmin
-      .from('submolts')
-      .select('id, name, display_name')
-      .in('id', submoltIds);
-    
-    const submoltsMap = (submolts || []).reduce((acc, s) => {
-      acc[s.id] = s;
-      return acc;
-    }, {} as Record<string, any>);
+    query = query.range(offset, offset + limit - 1);
+    const { data: posts, error, count } = await query;
 
-    // Get GM event details for role announcements
-    const gmEventIds = [...new Set((posts || []).map(p => p.gm_event_id).filter(Boolean))];
-    const { data: gmEvents } = await supabaseAdmin
-      .from('gm_events')
-      .select('id, pod_id, event_type, message, details, round, phase, created_at')
-      .in('id', gmEventIds);
-    
-    const eventsMap = (gmEvents || []).reduce((acc, e) => {
-      acc[e.id] = e;
-      return acc;
-    }, {} as Record<string, any>);
+    if (error) {
+      console.error('[Admin Posts] Error:', error);
+      return NextResponse.json({ success: false, error: 'Failed to fetch posts' }, { status: 500 });
+    }
 
-    // Get pod info for context
-    const podIds = [...new Set((gmEvents || []).map(e => e.pod_id).filter(Boolean))];
-    const { data: pods } = await supabaseAdmin
-      .from('game_pods')
-      .select('id, pod_number, status')
-      .in('id', podIds);
-    
-    const podsMap = (pods || []).reduce((acc, p) => {
-      acc[p.id] = p;
-      return acc;
-    }, {} as Record<string, any>);
+    // Transform posts
+    const transformed = (posts || []).map((p: any) => {
+      const author = Array.isArray(p.author) ? p.author[0] : p.author;
+      const submolt = Array.isArray(p.submolt) ? p.submolt[0] : p.submolt;
+      return {
+        id: p.id,
+        title: p.title,
+        content: p.content || '',
+        upvotes: p.upvotes || 0,
+        downvotes: p.downvotes || 0,
+        comment_count: p.comment_count || 0,
+        created_at: p.created_at,
+        author: { id: author?.id || '', name: author?.name || 'Unknown' },
+        submolt: { id: submolt?.id || '', name: submolt?.name || 'general', display_name: submolt?.display_name || 'General' },
+      };
+    });
 
-    // Enrich posts
-    const enriched = (posts || []).map(p => ({
-      id: p.id,
-      title: p.title,
-      content: p.content,
-      author_id: p.author_id,
-      author_name: agentsMap[p.author_id] || 'Unknown',
-      submolt: submoltsMap[p.submolt_id] || null,
-      moltbook_post_id: p.moltbook_post_id,
-      gm_event: eventsMap[p.gm_event_id] ? {
-        ...eventsMap[p.gm_event_id],
-        pod: podsMap[eventsMap[p.gm_event_id].pod_id] || null,
-      } : null,
-      created_at: p.created_at,
-      updated_at: p.updated_at,
-    }));
-
-    return NextResponse.json(enriched);
+    return NextResponse.json({
+      success: true,
+      posts: transformed,
+      count: count || 0,
+      has_more: (offset + limit) < (count || 0),
+    });
   } catch (err) {
     console.error('[Admin Posts] Error:', err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return NextResponse.json({ success: false, error: 'Internal error' }, { status: 500 });
   }
 }

@@ -1,62 +1,72 @@
+// Admin API: Get Post Detail with Comments
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
-import { requireAdminAuth } from '@/lib/api/admin-auth';
 
 export async function GET(
-  _request: NextRequest,
-  { params }: { params: { id: string } }
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  const authError = requireAdminAuth(_request);
-  if (authError) return authError;
+  const { id: postId } = await params;
 
-  const { data: post, error } = await supabaseAdmin
-    .from('posts')
-    .select(`
-      *,
-      agents:author_id (name),
-      submolts:submolt_id (name, display_name)
-    `)
-    .eq('id', params.id)
-    .single();
+  try {
+    // Get post
+    const { data: post, error: postError } = await supabaseAdmin
+      .from('posts')
+      .select('*, author:agents!author_id(id, name), submolt:submolts!submolt_id(id, name, display_name)')
+      .eq('id', postId)
+      .single();
 
-  if (error || !post) {
-    return NextResponse.json(
-      { error: 'Post not found' },
-      { status: 404 }
-    );
+    if (postError || !post) {
+      return NextResponse.json({ success: false, error: 'Post not found' }, { status: 404 });
+    }
+
+    // Get comments
+    const { data: comments, error: commentsError } = await supabaseAdmin
+      .from('comments')
+      .select('*, author:agents!author_id(id, name)')
+      .eq('post_id', postId)
+      .order('created_at', { ascending: true });
+
+    if (commentsError) {
+      console.error('[Admin Post] Comments error:', commentsError);
+    }
+
+    // Transform post
+    const author = Array.isArray(post.author) ? post.author[0] : post.author;
+    const submolt = Array.isArray(post.submolt) ? post.submolt[0] : post.submolt;
+    
+    const transformedPost = {
+      id: post.id,
+      title: post.title,
+      content: post.content || '',
+      upvotes: post.upvotes || 0,
+      downvotes: post.downvotes || 0,
+      comment_count: post.comment_count || 0,
+      created_at: post.created_at,
+      author: { id: author?.id || '', name: author?.name || 'Unknown' },
+      submolt: { id: submolt?.id || '', name: submolt?.name || 'general', display_name: submolt?.display_name || 'General' },
+    };
+
+    // Transform comments
+    const transformedComments = (comments || []).map((c: any) => {
+      const commentAuthor = Array.isArray(c.author) ? c.author[0] : c.author;
+      return {
+        id: c.id,
+        content: c.content || '',
+        upvotes: c.upvotes || 0,
+        downvotes: c.downvotes || 0,
+        created_at: c.created_at,
+        author: { id: commentAuthor?.id || '', name: commentAuthor?.name || 'Unknown' },
+      };
+    });
+
+    return NextResponse.json({
+      success: true,
+      post: transformedPost,
+      comments: transformedComments,
+    });
+  } catch (err) {
+    console.error('[Admin Post] Error:', err);
+    return NextResponse.json({ success: false, error: 'Internal error' }, { status: 500 });
   }
-
-  return NextResponse.json(post);
-}
-
-export async function DELETE(
-  _request: NextRequest,
-  { params }: { params: { id: string } }
-) {
-  const authError = requireAdminAuth(_request);
-  if (authError) return authError;
-
-  // Delete comments first (foreign key)
-  await supabaseAdmin
-    .from('comments')
-    .delete()
-    .eq('post_id', params.id);
-
-  // Delete votes
-  await supabaseAdmin
-    .from('votes')
-    .delete()
-    .eq('post_id', params.id);
-
-  // Delete the post
-  const { error } = await supabaseAdmin
-    .from('posts')
-    .delete()
-    .eq('id', params.id);
-
-  if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
-  }
-
-  return NextResponse.json({ success: true });
 }
