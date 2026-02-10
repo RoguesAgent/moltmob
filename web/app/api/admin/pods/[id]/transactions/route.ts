@@ -35,10 +35,11 @@ export async function GET(
       id: t.id,
       type: t.tx_type,
       amount: t.amount / 1e9,
-      from: t.from_address || t.agent_id || 'System',
-      to: t.to_address || 'Pod Vault',
+      from: t.wallet_from || 'System',
+      to: t.wallet_to || 'Pod Vault',
       timestamp: t.created_at,
-      status: t.status,
+      status: t.tx_status,
+      reason: t.reason,
     }));
 
     return NextResponse.json(mapped);
