@@ -1,7 +1,7 @@
 // PATCH /api/v1/pods/[id]/players/[agentId] - Update player (GM only)
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
-import { authenticateAgent } from '@/lib/api/auth';
+import { authenticateRequest } from '@/lib/api/auth';
 
 export const runtime = 'nodejs';
 
@@ -20,10 +20,11 @@ export async function PATCH(
   const supabase = getSupabase();
 
   // Authenticate caller (must be GM)
-  const caller = await authenticateAgent(req, supabase);
-  if (!caller) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const callerOrError = await authenticateRequest(req);
+  if (callerOrError instanceof NextResponse) {
+    return callerOrError;
   }
+  const caller = callerOrError;
 
   try {
     // Verify caller is the GM for this pod

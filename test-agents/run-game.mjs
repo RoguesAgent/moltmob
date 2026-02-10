@@ -207,20 +207,31 @@ class MoltMobAPI {
     this.baseUrl = CONFIG.API_URL;
   }
 
-  async request(method, endpoint, body = null) {
+  async request(method, endpoint, body = null, silent = false) {
     const headers = { 'Content-Type': 'application/json' };
     if (this.apiKey) {
       headers['Authorization'] = `Bearer ${this.apiKey}`;
     }
     
-    const res = await fetch(`${this.baseUrl}${endpoint}`, {
-      method,
-      headers,
-      body: body ? JSON.stringify(body) : undefined,
-    });
-    
-    const data = await res.json().catch(() => ({}));
-    return { status: res.status, ok: res.ok, data };
+    try {
+      const res = await fetch(`${this.baseUrl}${endpoint}`, {
+        method,
+        headers,
+        body: body ? JSON.stringify(body) : undefined,
+      });
+      
+      const data = await res.json().catch(() => ({}));
+      
+      // Log non-2xx responses for debugging
+      if (!res.ok && !silent) {
+        console.log(`    ⚠ API ${method} ${endpoint}: ${res.status} - ${data.error || JSON.stringify(data)}`);
+      }
+      
+      return { status: res.status, ok: res.ok, data };
+    } catch (err) {
+      if (!silent) console.log(`    ⚠ API ${method} ${endpoint}: ${err.message}`);
+      return { status: 0, ok: false, data: { error: err.message } };
+    }
   }
 
   // Create a new game pod
@@ -631,7 +642,7 @@ class GameClient {
       await this.api.updatePlayerRole(this.podId, agent.agentId, role);
       
       // Record event via API
-      await this.api.recordEvent(this.podId, 'role_assigned', 0, 'setup', {
+      await this.api.recordEvent(this.podId, 'roles_assigned', 0, 'setup', {
         agent_id: agent.agentId,
         agent_name: agent.name,
         encrypted: true,
@@ -652,7 +663,7 @@ class GameClient {
     console.log('═══════════════════════════════════════════════════════\n');
     
     // Record phase start
-    await this.api.recordEvent(this.podId, 'phase_start', this.currentRound, 'night', {});
+    await this.api.recordEvent(this.podId, 'phase_change', this.currentRound, 'night', {});
     
     const alive = this.agents.filter(a => a.isAlive);
     const clawboss = alive.find(a => a.role === 'clawboss');
@@ -729,7 +740,7 @@ class GameClient {
     console.log(`  DAY PHASE — Round ${this.currentRound}`);
     console.log('═══════════════════════════════════════════════════════\n');
     
-    await this.api.recordEvent(this.podId, 'phase_start', this.currentRound, 'day', {});
+    await this.api.recordEvent(this.podId, 'phase_change', this.currentRound, 'day', {});
     
     const alive = this.agents.filter(a => a.isAlive);
     
@@ -756,7 +767,7 @@ class GameClient {
     console.log(`  VOTE PHASE — Round ${this.currentRound}`);
     console.log('═══════════════════════════════════════════════════════\n');
     
-    await this.api.recordEvent(this.podId, 'phase_start', this.currentRound, 'vote', {});
+    await this.api.recordEvent(this.podId, 'phase_change', this.currentRound, 'vote', {});
     
     const alive = this.agents.filter(a => a.isAlive);
     const votes = new Map();
@@ -911,10 +922,11 @@ class GameClient {
       );
     }
     
-    // Update pod status
+    // Update pod status (map internal names to DB values)
+    const dbWinnerSide = result.winner === 'moltbreakers' ? 'clawboss' : 'pod';
     await this.api.updatePod(this.podId, {
       status: 'completed',
-      winner_side: result.winner,
+      winner_side: dbWinnerSide,
     });
     
     await this.api.recordEvent(this.podId, 'game_end', this.currentRound, 'complete', {
