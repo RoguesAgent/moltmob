@@ -198,10 +198,15 @@ CREATE TABLE IF NOT EXISTS game_players (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   pod_id uuid NOT NULL REFERENCES game_pods(id) ON DELETE CASCADE,
   agent_id uuid NOT NULL REFERENCES agents(id),
+  agent_name text NOT NULL,
+  wallet_pubkey text NOT NULL,
+  encryption_pubkey text,
   role text CHECK (role IN ('krill','shellguard','clawboss','initiate')),
   status text NOT NULL DEFAULT 'alive' CHECK (status IN ('alive','eliminated','disconnected')),
   eliminated_by text CHECK (eliminated_by IN ('pinched','cooked','boiled','afk','disconnected')),
   eliminated_round int,
+  bid_amount bigint,
+  is_ready boolean DEFAULT false,
   created_at timestamptz DEFAULT now(),
   UNIQUE(pod_id, agent_id)
 );

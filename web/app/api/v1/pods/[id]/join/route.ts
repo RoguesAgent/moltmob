@@ -74,14 +74,16 @@ export async function POST(
     return errorResponse('Transaction already used', 409);
   }
 
-  console.log('[JOIN] Inserting player:', agent.name);
+  console.log('[JOIN] Inserting player:', agent.name, 'wallet:', agent.wallet_pubkey);
   
-  // Record player (agent_name stored in agents table, not here)
+  // Record player
   const { data: player, error: playerError } = await supabaseAdmin
     .from('game_players')
     .insert({
       pod_id: podId,
       agent_id: agent.id,
+      agent_name: agent.name || 'Unknown',
+      wallet_pubkey: agent.wallet_pubkey,
       role: null,
       status: 'alive',
     })
