@@ -35,12 +35,12 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // ============ CONFIGURATION ============
 const CONFIG = {
-  // API endpoints
-  BASE_URL: process.env.MOLTMOB_BASE || 'http://localhost:8080',
+  // API endpoints - default to production moltmob.com
+  BASE_URL: process.env.MOLTMOB_BASE || 'https://www.moltmob.com',
   MOLTMOB_API: process.env.MOLTMOB_API || 'https://www.moltmob.com/api/v1',
   MOLTBOOK_API: process.env.USE_REAL_MOLTBOOK === 'true' 
     ? 'https://www.moltbook.com/api/v1'
-    : (process.env.MOLTMOB_BASE || 'http://localhost:8080') + '/api/mock/moltbook',
+    : (process.env.MOLTMOB_BASE || 'https://www.moltmob.com') + '/api/mock/moltbook',
   
   SOLANA_RPC: process.env.SOLANA_RPC || 'https://api.devnet.solana.com',
   ENTRY_FEE: 100_000_000, // 0.1 SOL
@@ -330,12 +330,13 @@ class MoltbookClient {
     this.baseUrl = CONFIG.MOLTBOOK_API;
   }
 
-  async post(endpoint, body) {
+  async post(endpoint, body, apiKeyOverride = null) {
     const headers = {
       'Content-Type': 'application/json',
     };
-    if (this.apiKey) {
-      headers['Authorization'] = `Bearer ${this.apiKey}`;
+    const key = apiKeyOverride || this.apiKey;
+    if (key) {
+      headers['Authorization'] = `Bearer ${key}`;
     }
     
     const res = await fetch(`${this.baseUrl}${endpoint}`, {
@@ -366,22 +367,24 @@ class MoltbookClient {
     }
   }
 
-  async comment(postId, content, agentName = null) {
-    const prefix = agentName ? `**[${agentName}]** ` : '';
+  async comment(postId, content, agentName = null, agentApiKey = null) {
+    // When using agent's own API key, don't prefix with name (author shown naturally)
+    const prefix = agentApiKey ? '' : (agentName ? `**[${agentName}]** ` : '');
     const { status, data } = await this.post(`/posts/${postId}/comments`, {
       content: prefix + content,
-    });
+    }, agentApiKey);
     
     return { ok: status === 201 || status === 200, data };
   }
 
-  async commentEncrypted(postId, encryptedPayload, agentName) {
+  async commentEncrypted(postId, encryptedPayload, agentName, agentApiKey = null) {
     // Format: [ENCRYPTED:{nonce}:{ciphertext}]
     const nonceB64 = Buffer.from(encryptedPayload.nonce).toString('base64');
     const ctB64 = Buffer.from(encryptedPayload.ciphertext).toString('base64');
-    const content = `**[${agentName}]** 🔐 [ENCRYPTED:${nonceB64}:${ctB64}]`;
+    const prefix = agentApiKey ? '' : `**[${agentName}]** `;
+    const content = `${prefix}🔐 [ENCRYPTED:${nonceB64}:${ctB64}]`;
     
-    return this.comment(postId, content);
+    return this.comment(postId, content, null, agentApiKey);
   }
 }
 
@@ -538,7 +541,7 @@ class GameClient {
     const encrypted = clawboss.encryptMessage(new TextEncoder().encode(targetPayload));
     
     if (this.postId) {
-      await this.moltbook.commentEncrypted(this.postId, encrypted, clawboss.name);
+      await this.moltbook.commentEncrypted(this.postId, encrypted, clawboss.name, clawboss.apiKey);
     }
     
     console.log(`  ${clawboss.name} targets ${target.name} (encrypted)\n`);
@@ -563,13 +566,13 @@ class GameClient {
       );
     }
     
-    // Each agent discusses
+    // Each agent discusses (using their own API key)
     for (const agent of alive) {
       const comment = agent.generateDiscussion(this.currentRound, alive, this.eliminatedThisRound);
       console.log(`  ${agent.name}: "${comment}"`);
       
       if (this.postId) {
-        await this.moltbook.comment(this.postId, comment, agent.name);
+        await this.moltbook.comment(this.postId, comment, agent.name, agent.apiKey);
         await this.sleep(CONFIG.DISCUSSION_DELAY_MS);
       }
     }
@@ -600,7 +603,7 @@ class GameClient {
       console.log(`  ${agent.name} votes for ${target.name}`);
       
       if (this.postId) {
-        await this.moltbook.commentEncrypted(this.postId, encrypted, agent.name);
+        await this.moltbook.commentEncrypted(this.postId, encrypted, agent.name, agent.apiKey);
         await this.sleep(CONFIG.VOTE_DELAY_MS);
       }
     }
