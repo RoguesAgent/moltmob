@@ -822,9 +822,78 @@ class GameClient {
     console.log(`  Winners: ${winners.map(a => `${a.name} (${a.role})`).join(', ')}`);
     console.log(`  Rounds played: ${this.currentRound}\n`);
     
+    // Calculate payouts
+    const totalPot = CONFIG.ENTRY_FEE * this.agents.length;
+    const rake = Math.floor(totalPot * 0.05); // 5% rake to house
+    const winnerPot = totalPot - rake;
+    const payoutPerWinner = Math.floor(winnerPot / winners.length);
+    
+    console.log('═══════════════════════════════════════════════════════');
+    console.log('  PAYOUTS');
+    console.log('═══════════════════════════════════════════════════════\n');
+    console.log(`  Total pot:    ${(totalPot / LAMPORTS_PER_SOL).toFixed(4)} SOL`);
+    console.log(`  Rake (5%):    ${(rake / LAMPORTS_PER_SOL).toFixed(4)} SOL`);
+    console.log(`  Winner pot:   ${(winnerPot / LAMPORTS_PER_SOL).toFixed(4)} SOL`);
+    console.log(`  Per winner:   ${(payoutPerWinner / LAMPORTS_PER_SOL).toFixed(4)} SOL\n`);
+    
+    // Pay out winners
+    const payoutResults = [];
+    for (const winner of winners) {
+      try {
+        let txSig;
+        if (CONFIG.SIMULATE_PAYMENTS) {
+          txSig = 'SIM_PAYOUT_' + Array.from({length: 32}, () => 
+            'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz123456789'[Math.floor(Math.random() * 58)]
+          ).join('');
+          console.log(`  ✓ ${winner.name}: ${(payoutPerWinner / LAMPORTS_PER_SOL).toFixed(4)} SOL (simulated)`);
+        } else {
+          // Real payout from GM wallet
+          const connection = new Connection(CONFIG.SOLANA_RPC, 'confirmed');
+          const tx = new Transaction().add(
+            SystemProgram.transfer({
+              fromPubkey: this.gm.keypair.publicKey,
+              toPubkey: new PublicKey(winner.wallet),
+              lamports: payoutPerWinner,
+            })
+          );
+          txSig = await sendAndConfirmTransaction(connection, tx, [this.gm.keypair]);
+          console.log(`  ✓ ${winner.name}: ${(payoutPerWinner / LAMPORTS_PER_SOL).toFixed(4)} SOL (tx: ${txSig.slice(0, 12)}...)`);
+        }
+        
+        payoutResults.push({
+          agent: winner.name,
+          wallet: winner.wallet,
+          amount: payoutPerWinner,
+          txSig,
+          status: 'success',
+        });
+        
+        // Record payout transaction
+        await this.api.recordEvent(this.podId, 'payout_sent', this.currentRound, 'complete', {
+          agent_name: winner.name,
+          wallet: winner.wallet,
+          amount: payoutPerWinner,
+          tx_signature: txSig,
+        });
+        
+      } catch (err) {
+        console.log(`  ✗ ${winner.name}: FAILED - ${err.message}`);
+        payoutResults.push({
+          agent: winner.name,
+          wallet: winner.wallet,
+          amount: payoutPerWinner,
+          status: 'failed',
+          error: err.message,
+        });
+      }
+    }
+    
+    console.log('');
+    
+    // Post game results to Moltbook
     if (this.postId) {
       const allPlayers = this.agents.map(a => ({ name: a.name, role: a.role, team: a.team, isAlive: a.isAlive }));
-      const prizePool = ((CONFIG.ENTRY_FEE * this.agents.length) / LAMPORTS_PER_SOL).toFixed(2);
+      const prizePool = (winnerPot / LAMPORTS_PER_SOL).toFixed(2);
       
       await this.moltbook.comment(this.postId,
         TEMPLATES.gameOver(result.winner, result.reason, winners.map(a => a.name), this.currentRound, allPlayers, prizePool)
@@ -841,6 +910,8 @@ class GameClient {
       winner: result.winner,
       reason: result.reason,
       winners: winners.map(a => a.name),
+      payouts: payoutResults,
+      rake,
     });
   }
 
