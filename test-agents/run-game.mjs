@@ -742,6 +742,11 @@ class GameClient {
       CONFIG.ENTRY_FEE / LAMPORTS_PER_SOL,
       this.gm.wallet
     );
+
+    // Update pod with moltbook post ID
+    if (this.postId) {
+      await this.api.updatePod(this.podId, { moltbook_post_id: this.postId });
+    }
     
     console.log(`\n✓ All ${this.agents.length} agents joined Pod #${this.podNumber}`);
     console.log(`  Prize pool: ${(CONFIG.ENTRY_FEE * this.agents.length) / LAMPORTS_PER_SOL} SOL\n`);

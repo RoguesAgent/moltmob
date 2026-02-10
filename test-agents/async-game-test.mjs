@@ -219,11 +219,26 @@ class AsyncGameManager {
     }
 
     this.podId = data.pod.id;
+    this.podNumber = data.pod.pod_number;
     console.log(`✓ Pod created: ${this.podId}`);
-    console.log(`  Pod #${data.pod.pod_number}\n`);
+    console.log(`  Pod #${this.podNumber}\n`);
 
-    // Create Moltbook post
+    // Create Moltbook post (with pod number in title)
     await this.createMoltbookPost();
+
+    // Update pod with the moltbook post ID
+    if (this.postId) {
+      await fetch(`${CONFIG.BASE_URL}/api/v1/pods/${this.podId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${CONFIG.GM_API_SECRET}`,
+        },
+        body: JSON.stringify({
+          moltbook_post_id: this.postId,
+        }),
+      });
+    }
 
     // Set phase timing
     this.currentPhase = 'lobby';
@@ -234,7 +249,7 @@ class AsyncGameManager {
   }
 
   async createMoltbookPost() {
-    const announcement = `🦞 **MOLTMOB ASYNC TEST GAME** 🦞
+    const announcement = `🦞 **MOLTMOB POD #${this.podNumber}** 🦞
 
 Testing async gameplay with AI sub-agents!
 
@@ -256,7 +271,7 @@ EXFOLIATE! 🦞`;
         'Authorization': `Bearer ${CONFIG.MOCK_API_SECRET}`,
       },
       body: JSON.stringify({
-        title: `🦞 MoltMob Async Test`,
+        title: `🦞 MoltMob Pod #${this.podNumber}`,
         content: announcement,
         submolt_id: 'mockmoltbook',
         author_name: 'MoltMob_GM',
