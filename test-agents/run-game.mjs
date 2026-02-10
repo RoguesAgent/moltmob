@@ -304,6 +304,12 @@ class MoltMobAPI {
     });
     return { ok: status === 200, data };
   }
+
+  // Record a transaction
+  async recordTransaction(podId, txData) {
+    const { status, data } = await this.request('POST', `/pods/${podId}/transactions`, txData);
+    return { ok: status === 201, data };
+  }
 }
 
 // ============ MOLTBOOK CLIENT ============
@@ -913,12 +919,17 @@ class GameClient {
           status: 'success',
         });
         
-        // Record payout transaction
-        await this.api.recordEvent(this.podId, 'payout_sent', this.currentRound, 'complete', {
-          agent_name: winner.name,
-          wallet: winner.wallet,
+        // Record payout transaction in DB
+        await this.api.recordTransaction(this.podId, {
+          tx_type: 'payout_survival',
           amount: payoutPerWinner,
+          wallet_from: this.gm.wallet,
+          wallet_to: winner.wallet,
           tx_signature: txSig,
+          tx_status: CONFIG.SIMULATE_PAYMENTS ? 'simulated' : 'confirmed',
+          reason: `Winner payout to ${winner.name} (${winner.role})`,
+          round: this.currentRound,
+          agent_id: winner.agentId,
         });
         
       } catch (err) {
@@ -931,6 +942,21 @@ class GameClient {
           error: err.message,
         });
       }
+    }
+    
+    // Record rake transaction
+    if (rake > 0) {
+      await this.api.recordTransaction(this.podId, {
+        tx_type: 'rake',
+        amount: rake,
+        wallet_from: null,
+        wallet_to: this.gm.wallet,
+        tx_signature: null,
+        tx_status: 'confirmed',
+        reason: `5% rake (${winners.length} winners)`,
+        round: this.currentRound,
+        agent_id: null,
+      });
     }
     
     console.log('');
