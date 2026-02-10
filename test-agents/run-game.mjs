@@ -466,11 +466,21 @@ class MoltbookClient {
     return { ok: status === 201 || status === 200, data };
   }
 
-  async commentEncrypted(postId, encryptedPayload, agentName, agentApiKey = null, round = 0) {
+  async commentEncrypted(postId, encryptedPayload, agentName, agentApiKey = null, round = 0, phase = 'role') {
     const nonceB64 = Buffer.from(encryptedPayload.nonce).toString('base64');
     const ctB64 = Buffer.from(encryptedPayload.ciphertext).toString('base64');
     const prefix = agentApiKey ? '' : `[${agentName}] `;
-    const roundLabel = round > 0 ? `R${round}` : 'ROLE';
+    
+    // Format: R{round}GN for night actions, R{round}GM for votes, ROLE for role assignments
+    let roundLabel;
+    if (phase === 'night') {
+      roundLabel = `R${round}GN`; // Good Night - night actions
+    } else if (phase === 'vote') {
+      roundLabel = `R${round}GM`; // Good Morning - day votes
+    } else {
+      roundLabel = 'ROLE'; // Role assignment
+    }
+    
     const content = `${prefix}🔐 [${roundLabel}:${nonceB64}:${ctB64}]`;
     
     return this.comment(postId, content, null, agentApiKey);
@@ -839,7 +849,7 @@ class GameClient {
       const encrypted = agent.encryptMessage(new TextEncoder().encode(actionPayload));
       
       if (this.postId) {
-        await this.moltbook.commentEncrypted(this.postId, encrypted, agent.name, agent.apiKey, this.currentRound);
+        await this.moltbook.commentEncrypted(this.postId, encrypted, agent.name, agent.apiKey, this.currentRound, 'night');
         await this.sleep(CONFIG.VOTE_DELAY_MS);
       }
       
@@ -947,7 +957,7 @@ class GameClient {
       const encrypted = agent.encryptMessage(new TextEncoder().encode(votePayload));
       
       if (this.postId) {
-        await this.moltbook.commentEncrypted(this.postId, encrypted, agent.name, agent.apiKey, this.currentRound);
+        await this.moltbook.commentEncrypted(this.postId, encrypted, agent.name, agent.apiKey, this.currentRound, 'vote');
         await this.sleep(CONFIG.VOTE_DELAY_MS);
       }
       
