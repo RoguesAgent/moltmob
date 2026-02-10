@@ -1,23 +1,15 @@
 // PATCH /api/v1/pods/[id]/players/[agentId] - Update player (GM only)
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { supabaseAdmin } from '@/lib/supabase';
 import { authenticateRequest } from '@/lib/api/auth';
 
 export const runtime = 'nodejs';
-
-function getSupabase() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) throw new Error('Supabase env vars not set');
-  return createClient(url, key);
-}
 
 export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string; agentId: string }> }
 ) {
   const { id: podId, agentId } = await params;
-  const supabase = getSupabase();
 
   // Authenticate caller (must be GM)
   const callerOrError = await authenticateRequest(req);
@@ -28,7 +20,7 @@ export async function PATCH(
 
   try {
     // Verify caller is the GM for this pod
-    const { data: pod, error: podError } = await supabase
+    const { data: pod, error: podError } = await supabaseAdmin
       .from('game_pods')
       .select('gm_agent_id')
       .eq('id', podId)
@@ -55,7 +47,7 @@ export async function PATCH(
     }
 
     // Update the player
-    const { data: player, error } = await supabase
+    const { data: player, error } = await supabaseAdmin
       .from('game_players')
       .update(updates)
       .eq('pod_id', podId)
