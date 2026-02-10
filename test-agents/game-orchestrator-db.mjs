@@ -27,7 +27,7 @@
  *   MOLTMOB_API_URL            - Mock API URL (default: http://localhost:3000)
  */
 
-import { Connection, PublicKey, Keypair, LAMPORTS_PER_SOL } from '@solana/web3.js';
+import { Connection, PublicKey, Keypair, LAMPORTS_PER_SOL, Transaction, SystemProgram, sendAndConfirmTransaction } from '@solana/web3.js';
 import { xchacha20poly1305 } from '@noble/ciphers/chacha.js';
 import { randomBytes } from '@noble/hashes/utils.js';
 import { ed25519, x25519 } from '@noble/curves/ed25519.js';
@@ -45,6 +45,11 @@ const CONFIG = {
   MAX_PLAYERS: 12,
   SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || 'https://tecywteuhsicdeuygznl.supabase.co',
   get SUPABASE_SERVICE_KEY() { return process.env.SUPABASE_SERVICE_ROLE_KEY; },
+  
+  // Real Solana Transactions (x402)
+  // USE_REAL_SOLANA=true to use real devnet transactions, false for simulated
+  USE_REAL_SOLANA: process.env.USE_REAL_SOLANA === 'true',
+  SOLANA_RPC: process.env.SOLANA_RPC || 'https://api.devnet.solana.com',
   
   // Moltbook Configuration
   // USE_REAL_MOLTBOOK=true to post to real Moltbook, false for mock/local
@@ -199,7 +204,7 @@ class Agent {
       const secretKeyFull = new Uint8Array(data.secretKey);
       const secretKey = secretKeyFull.slice(0, 32);
       const publicKey = new PublicKey(data.publicKey).toBytes();
-      this.wallet = { publicKey, secretKey };
+      this.wallet = { publicKey, secretKey, secretKeyFull }; // secretKeyFull for Solana signing
       this.walletPubkey = data.publicKey;
       this.ed25519PubKey = publicKey;
       this.x25519PubKey = ed25519ToX25519Pub(this.ed25519PubKey);
@@ -335,7 +340,8 @@ class GameOrchestrator {
       const secretKeyFull = new Uint8Array(data.secretKey);
       const secretKey = secretKeyFull.slice(0, 32);
       const publicKey = new PublicKey(data.publicKey).toBytes();
-      this.gmWallet = { publicKey, secretKey };
+      const solanaPublicKey = new PublicKey(data.publicKey);
+      this.gmWallet = { publicKey: solanaPublicKey, secretKey, secretKeyFull }; // publicKey as PublicKey for Solana
       this.gmX25519PubKey = ed25519ToX25519Pub(publicKey);
       this.gmX25519PrivKey = ed25519ToX25519Priv(secretKey);
       console.log("✓ GM keys loaded");
@@ -675,20 +681,68 @@ class GameOrchestrator {
     await this.db.update('game_pods', { status: 'bidding', current_phase: 'bidding' }, `?id=eq.${this.podId}`);
     
     this.pot = 0;
-    for (const agent of this.agents) {
-      const txHash = `tx_${randomUUID().slice(0, 8)}`;
-      this.pot += CONFIG.ENTRY_FEE;
+    
+    if (CONFIG.USE_REAL_SOLANA) {
+      console.log('  [x402] Real Solana transactions enabled\n');
       
-      await this.createTransaction(
-        agent.dbAgentId,
-        'entry_fee',
-        CONFIG.ENTRY_FEE,
-        agent.walletPubkey,
-        'pod_vault',
-        `Entry fee for Pod #${this.podNumber}`,
-        txHash
-      );
-      console.log(`  ${agent.name} paid ${CONFIG.ENTRY_FEE / LAMPORTS_PER_SOL} SOL`);
+      // Create Solana connection
+      const connection = new Connection(CONFIG.SOLANA_RPC, 'confirmed');
+      
+      for (const agent of this.agents) {
+        try {
+          // Load agent's keypair
+          const agentKeypair = Keypair.fromSecretKey(agent.wallet.secretKeyFull);
+          
+          // Create transfer transaction to GM wallet (pod vault)
+          const tx = new Transaction().add(
+            SystemProgram.transfer({
+              fromPubkey: agentKeypair.publicKey,
+              toPubkey: this.gmWallet.publicKey,
+              lamports: CONFIG.ENTRY_FEE
+            })
+          );
+          
+          // Send and confirm transaction
+          const signature = await sendAndConfirmTransaction(connection, tx, [agentKeypair]);
+          
+          this.pot += CONFIG.ENTRY_FEE;
+          
+          await this.createTransaction(
+            agent.dbAgentId,
+            'entry_fee',
+            CONFIG.ENTRY_FEE,
+            agent.walletPubkey,
+            this.gmWallet.publicKey.toBase58(),
+            `Entry fee for Pod #${this.podNumber}`,
+            signature // Real transaction signature!
+          );
+          console.log(`  ${agent.name} paid ${CONFIG.ENTRY_FEE / LAMPORTS_PER_SOL} SOL - tx: ${signature.slice(0, 16)}...`);
+          
+          // Small delay between transactions
+          await this.sleep(200);
+          
+        } catch (err) {
+          console.error(`  ✗ ${agent.name} payment failed: ${err.message}`);
+          throw new Error(`Payment failed for ${agent.name}: ${err.message}`);
+        }
+      }
+    } else {
+      // Simulated transactions (mock mode)
+      for (const agent of this.agents) {
+        const txHash = `sim_${randomUUID().slice(0, 8)}`;
+        this.pot += CONFIG.ENTRY_FEE;
+        
+        await this.createTransaction(
+          agent.dbAgentId,
+          'entry_fee',
+          CONFIG.ENTRY_FEE,
+          agent.walletPubkey,
+          'pod_vault',
+          `Entry fee for Pod #${this.podNumber}`,
+          txHash
+        );
+        console.log(`  ${agent.name} paid ${CONFIG.ENTRY_FEE / LAMPORTS_PER_SOL} SOL (simulated)`);
+      }
     }
     
     await this.createGMEvent('announcement', `💰 All payments received. Pot: ${this.pot / LAMPORTS_PER_SOL} SOL`, {
