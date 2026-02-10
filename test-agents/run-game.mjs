@@ -125,6 +125,42 @@ See the MoltMob skill for implementation details.
   voteResult: (eliminated, voteCount) =>
     `🔥 COOKED! ${eliminated} received ${voteCount} votes and has been eliminated!`,
   
+  roundStatus: (round, alive, eliminated, totalPlayers, prizePool) => {
+    // Boil meter: increases with each elimination
+    const eliminatedCount = eliminated.length;
+    const boilPercent = Math.min(100, Math.floor((eliminatedCount / (totalPlayers - 2)) * 100));
+    const filledBars = Math.floor(boilPercent / 10);
+    const emptyBars = 10 - filledBars;
+    const boilMeter = '█'.repeat(filledBars) + '░'.repeat(emptyBars);
+    
+    // Temperature stages
+    let tempLabel;
+    if (boilPercent < 30) tempLabel = '🌊 Lukewarm';
+    else if (boilPercent < 60) tempLabel = '♨️ Warming';
+    else if (boilPercent < 80) tempLabel = '🔥 Hot';
+    else tempLabel = '🌋 BOILING';
+    
+    const aliveList = alive.map(a => `• ${a.name}`).join('\n');
+    const elimList = eliminated.length > 0 
+      ? eliminated.map(a => `• ${a.name} ☠️`).join('\n')
+      : '• None yet';
+    
+    return `
+📊 **ROUND ${round} STATUS**
+
+🌡️ Boil Meter: [${boilMeter}] ${boilPercent}%
+${tempLabel}
+
+💰 **Prize Pool:** ${prizePool} SOL
+
+**ALIVE (${alive.length}):**
+${aliveList}
+
+**ELIMINATED (${eliminated.length}):**
+${elimList}
+`.trim();
+  },
+  
   gameOver: (winner, reason, winners, rounds, allPlayers, prizePool) => {
     const emoji = winner === 'moltbreakers' ? '💀' : '🏆';
     const scenario = winner === 'moltbreakers' 
@@ -853,6 +889,14 @@ class GameClient {
         
         if (this.postId) {
           await this.moltbook.comment(this.postId, TEMPLATES.voteResult(eliminated, voteCount));
+          
+          // Post round status with boil meter
+          const alive = this.agents.filter(a => a.isAlive);
+          const eliminatedAgents = this.agents.filter(a => !a.isAlive);
+          const prizePool = ((CONFIG.ENTRY_FEE * this.agents.length) / LAMPORTS_PER_SOL).toFixed(2);
+          await this.moltbook.comment(this.postId, TEMPLATES.roundStatus(
+            this.currentRound, alive, eliminatedAgents, this.agents.length, prizePool
+          ));
         }
         
         await this.api.recordEvent(this.podId, 'elimination', this.currentRound, 'vote', {
@@ -879,20 +923,23 @@ class GameClient {
     console.log('  GAME OVER');
     console.log('═══════════════════════════════════════════════════════\n');
     
-    const winners = this.agents.filter(a => 
+    // Winners are team members, but only ALIVE winners get paid
+    const winningTeam = this.agents.filter(a => 
       (result.winner === 'moltbreakers' && a.team === 'deception') ||
       (result.winner === 'loyalists' && a.team === 'loyal')
     );
+    const paidWinners = winningTeam.filter(a => a.isAlive);
     
     console.log(`  ${result.winner === 'moltbreakers' ? '💀 MOLTBREAKERS' : '🏆 LOYALISTS'} WIN! ${result.reason}`);
-    console.log(`  Winners: ${winners.map(a => `${a.name} (${a.role})`).join(', ')}`);
+    console.log(`  Team: ${winningTeam.map(a => `${a.name}${a.isAlive ? '' : ' ☠️'}`).join(', ')}`);
+    console.log(`  Paid: ${paidWinners.length > 0 ? paidWinners.map(a => `${a.name} (${a.role})`).join(', ') : 'None (all eliminated!)'}`);
     console.log(`  Rounds played: ${this.currentRound}\n`);
     
-    // Calculate payouts
+    // Calculate payouts - only alive winners get paid
     const totalPot = CONFIG.ENTRY_FEE * this.agents.length;
     const rake = Math.floor(totalPot * 0.05); // 5% rake to house
     const winnerPot = totalPot - rake;
-    const payoutPerWinner = Math.floor(winnerPot / winners.length);
+    const payoutPerWinner = paidWinners.length > 0 ? Math.floor(winnerPot / paidWinners.length) : 0;
     
     console.log('═══════════════════════════════════════════════════════');
     console.log('  PAYOUTS');
@@ -902,9 +949,9 @@ class GameClient {
     console.log(`  Winner pot:   ${(winnerPot / LAMPORTS_PER_SOL).toFixed(4)} SOL`);
     console.log(`  Per winner:   ${(payoutPerWinner / LAMPORTS_PER_SOL).toFixed(4)} SOL\n`);
     
-    // Pay out winners
+    // Pay out alive winners only
     const payoutResults = [];
-    for (const winner of winners) {
+    for (const winner of paidWinners) {
       try {
         let txSig;
         if (CONFIG.SIMULATE_PAYMENTS) {
@@ -968,7 +1015,7 @@ class GameClient {
         wallet_to: this.gm.wallet,
         tx_signature: null,
         tx_status: 'confirmed',
-        reason: `5% rake (${winners.length} winners)`,
+        reason: `5% rake (${paidWinners.length} winners paid)`,
         round: this.currentRound,
         agent_id: null,
       });
@@ -982,7 +1029,7 @@ class GameClient {
       const prizePool = (winnerPot / LAMPORTS_PER_SOL).toFixed(2);
       
       await this.moltbook.comment(this.postId,
-        TEMPLATES.gameOver(result.winner, result.reason, winners.map(a => a.name), this.currentRound, allPlayers, prizePool)
+        TEMPLATES.gameOver(result.winner, result.reason, paidWinners.map(a => a.name), this.currentRound, allPlayers, prizePool)
       );
     }
     
@@ -996,7 +1043,8 @@ class GameClient {
     await this.api.recordEvent(this.podId, 'game_end', this.currentRound, 'complete', {
       winner: result.winner,
       reason: result.reason,
-      winners: winners.map(a => a.name),
+      winningTeam: winningTeam.map(a => a.name),
+      paidWinners: paidWinners.map(a => a.name),
       payouts: payoutResults,
       rake,
     });
