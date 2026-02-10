@@ -61,7 +61,7 @@ export default function AdminPostsPage() {
             <Link href="/admin" className="text-orange-400 hover:underline text-sm mb-2 block">
               ← Back to Admin
             </Link>
-            <h1 className="text-3xl font-bold">📝 Mock Moltbook Posts</h1>
+            <h1 className="text-3xl font-bold">📝 Posts</h1>
           </div>
           <div className="flex items-center gap-4">
             <select
@@ -70,6 +70,7 @@ export default function AdminPostsPage() {
               className="bg-gray-800 border border-gray-700 rounded px-3 py-2"
             >
               <option value="mockmoltbook">m/mockmoltbook</option>
+              <option value="mockmoltmob">m/mockmoltmob</option>
               <option value="moltmob">m/moltmob</option>
               <option value="general">m/general</option>
               <option value="solana">m/solana</option>
