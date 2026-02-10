@@ -6,12 +6,15 @@ import { adminFetch } from '@/lib/admin-fetch';
 
 interface Pod {
   id: string;
+  pod_number?: number;
   status: string;
   phase: string;
   round: number;
   playerCount: number;
   prizePool: number;
   boilMeter: number;
+  winner_side?: string;
+  moltbook_post_id?: string;
 }
 
 interface Player {
@@ -142,22 +145,64 @@ export default function GameDetailPage() {
       </div>
 
       {activeTab === 'overview' && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-gray-800 rounded-lg p-4">
-            <div className="text-gray-400 text-sm">Round</div>
-            <div className="text-2xl font-bold text-emerald-400">{pod.round}</div>
+        <div className="space-y-6">
+          {/* Winner Banner */}
+          {pod.winner_side && (
+            <div className={`rounded-lg p-4 text-center ${
+              pod.winner_side === 'pod' ? 'bg-blue-900/50 border border-blue-500' : 'bg-red-900/50 border border-red-500'
+            }`}>
+              <div className="text-2xl font-bold">
+                {pod.winner_side === 'pod' ? '🏆 LOYALISTS WIN!' : '💀 MOLTBREAKERS WIN!'}
+              </div>
+            </div>
+          )}
+
+          {/* Stats Grid */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="bg-gray-800 rounded-lg p-4">
+              <div className="text-gray-400 text-sm">Rounds Played</div>
+              <div className="text-2xl font-bold text-emerald-400">{pod.round}</div>
+            </div>
+            <div className="bg-gray-800 rounded-lg p-4">
+              <div className="text-gray-400 text-sm">Players</div>
+              <div className="text-2xl font-bold text-emerald-400">{pod.playerCount || players.length}</div>
+            </div>
+            <div className="bg-gray-800 rounded-lg p-4">
+              <div className="text-gray-400 text-sm">Prize Pool</div>
+              <div className="text-2xl font-bold text-emerald-400">{pod.prizePool?.toFixed(2) || '0'} SOL</div>
+            </div>
+            <div className="bg-gray-800 rounded-lg p-4">
+              <div className="text-gray-400 text-sm">Boil Meter</div>
+              <div className="text-2xl font-bold text-emerald-400">{pod.boilMeter || 0}%</div>
+            </div>
           </div>
-          <div className="bg-gray-800 rounded-lg p-4">
-            <div className="text-gray-400 text-sm">Players</div>
-            <div className="text-2xl font-bold text-emerald-400">{pod.playerCount}</div>
-          </div>
-          <div className="bg-gray-800 rounded-lg p-4">
-            <div className="text-gray-400 text-sm">Prize Pool</div>
-            <div className="text-2xl font-bold text-emerald-400">{pod.prizePool} SOL</div>
-          </div>
-          <div className="bg-gray-800 rounded-lg p-4">
-            <div className="text-gray-400 text-sm">Boil Meter</div>
-            <div className="text-2xl font-bold text-emerald-400">{pod.boilMeter}%</div>
+
+          {/* Quick Links */}
+          <div className="flex gap-4">
+            {pod.moltbook_post_id && (
+              <a
+                href={`https://moltbook.com/post/${pod.moltbook_post_id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="bg-gray-800 hover:bg-gray-700 rounded-lg p-4 flex items-center gap-3 transition-colors"
+              >
+                <span className="text-2xl">💬</span>
+                <div>
+                  <div className="font-medium">View on Moltbook</div>
+                  <div className="text-gray-400 text-sm">See the full discussion thread</div>
+                </div>
+              </a>
+            )}
+            <button
+              onClick={() => setActiveTab('moltbook')}
+              className="bg-gray-800 hover:bg-gray-700 rounded-lg p-4 flex items-center gap-3 transition-colors"
+            >
+              <span className="text-2xl">📜</span>
+              <div>
+                <div className="font-medium">Game Log</div>
+                <div className="text-gray-400 text-sm">View synced discussion</div>
+              </div>
+            </button>
           </div>
         </div>
       )}

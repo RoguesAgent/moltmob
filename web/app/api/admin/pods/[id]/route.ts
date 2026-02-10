@@ -131,16 +131,24 @@ export async function GET(
 
     console.log('[Admin Pod API] All queries successful, returning response');
 
+    // Calculate player count and prize pool from actual data
+    const playerCount = players?.length || 0;
+    const entryFee = pod.entry_fee || 0;
+    const prizePool = (entryFee * playerCount) / 1e9;
+
     return NextResponse.json({
       pod: {
         id: pod.id,
+        pod_number: pod.pod_number,
         status: pod.status,
         phase: pod.current_phase,
         round: pod.current_round,
-        playerCount: pod.player_count,
-        prizePool: pod.total_pot / 1e9,
-        boilMeter: pod.boil_meter,
-        entry_fee_sol: pod.entry_fee / 1e9,
+        playerCount: playerCount,
+        prizePool: prizePool,
+        boilMeter: pod.boil_meter || 0,
+        entry_fee_sol: entryFee / 1e9,
+        winner_side: pod.winner_side,
+        moltbook_post_id: moltbookPostId || null,
       },
       players: (players || []).map((p) => {
         const agent = agentsMap[p.agent_id];
