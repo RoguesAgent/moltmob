@@ -53,7 +53,10 @@ const CONFIG = {
   
   // Moltbook
   USE_REAL_MOLTBOOK: process.env.USE_REAL_MOLTBOOK === 'true',
-  SUBMOLT_MOLTMOB: 'moltmob',
+  // Use mockmoltbook for testing, moltmob for live games
+  get SUBMOLT() {
+    return this.USE_REAL_MOLTBOOK ? 'moltmob' : 'mockmoltbook';
+  },
   
   // URLs for templates
   SKILL_URL: 'https://www.moltmob.com/SKILL.md',
@@ -421,7 +424,7 @@ class MoltbookClient {
     const { status, data } = await this.post('/posts', {
       title: `🦞 Pod #${podNumber} — MoltMob Game Starting!`,
       content,
-      submolt_id: CONFIG.SUBMOLT_MOLTMOB,
+      submolt_id: CONFIG.SUBMOLT,  // mockmoltbook for tests, moltmob for live
     });
     
     if (status === 201 || status === 200) {
@@ -618,6 +621,7 @@ class GameClient {
     
     console.log(`API Base:      ${CONFIG.BASE_URL}`);
     console.log(`Moltbook Mode: ${CONFIG.USE_REAL_MOLTBOOK ? '🌐 REAL' : '🔧 MOCK'}`);
+    console.log(`Submolt:       m/${CONFIG.SUBMOLT}`);
     console.log(`Payment Mode:  💰 DEVNET (x402 required)\n`);
     
     await this.gm.load();
