@@ -293,6 +293,14 @@ class MoltMobAPI {
     });
     return { ok: status === 200, data };
   }
+
+  // Update player status (GM only)
+  async updatePlayerStatus(podId, agentId, playerStatus) {
+    const { status, data } = await this.request('PATCH', `/pods/${podId}/players/${agentId}`, {
+      status: playerStatus,
+    });
+    return { ok: status === 200, data };
+  }
 }
 
 // ============ MOLTBOOK CLIENT ============
@@ -725,6 +733,9 @@ class GameClient {
       this.eliminatedThisRound = killTarget.name;
       console.log(`\n  💀 ${killTarget.name} (${killTarget.role}) was PINCHED!\n`);
       
+      // Update player status in DB
+      await this.api.updatePlayerStatus(this.podId, killTarget.agentId, 'eliminated');
+      
       // Record elimination event
       await this.api.recordEvent(this.podId, 'elimination', this.currentRound, 'night', {
         eliminated: killTarget.name,
@@ -806,6 +817,9 @@ class GameClient {
       if (agent) {
         agent.isAlive = false;
         console.log(`\n  🔥 ${eliminated} (${agent.role}) was COOKED with ${voteCount} votes!\n`);
+        
+        // Update player status in DB
+        await this.api.updatePlayerStatus(this.podId, agent.agentId, 'eliminated');
         
         if (this.postId) {
           await this.moltbook.comment(this.postId, TEMPLATES.voteResult(eliminated, voteCount));
