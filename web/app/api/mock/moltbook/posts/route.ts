@@ -4,10 +4,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 import { randomUUID } from 'crypto';
 
-// Auth check for mock API - supports both API key and MOCK_API_SECRET
+// Auth check for mock API - supports Authorization header, x-api-key header, and query param
 async function getAgentFromAuth(req: NextRequest): Promise<{ id: string; name: string } | null> {
   const authHeader = req.headers.get('authorization');
-  const apiKey = authHeader?.replace('Bearer ', '');
+  const xApiKey = req.headers.get('x-api-key');
+  const queryKey = new URL(req.url).searchParams.get('api_key');
+  const apiKey = authHeader?.replace('Bearer ', '') || xApiKey || queryKey;
   
   if (!apiKey) return null;
   
