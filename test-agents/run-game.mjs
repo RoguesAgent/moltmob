@@ -79,8 +79,11 @@ const CONFIG = {
   // GM wallet folder
   GM_FOLDER: 'GM',
   
-  // GM API Secret (for API calls without DB lookup)
+  // GM API Secret (for game API calls without DB lookup)
   GM_API_SECRET: process.env.GM_API_SECRET || null,
+  
+  // Mock API Secret (for mock Moltbook API calls)
+  MOCK_API_SECRET: process.env.MOCK_API_SECRET || null,
   
   // Timing
   DISCUSSION_DELAY_MS: 1000,
@@ -645,10 +648,11 @@ class GameClient {
     await this.gm.load();
     console.log(`✓ GM loaded: ${this.gm.wallet.slice(0, 8)}...`);
     
-    // Use GM_API_SECRET if available, otherwise fall back to loaded API key
-    const gmKey = CONFIG.GM_API_SECRET || this.gm.apiKey;
-    this.api = new MoltMobAPI(gmKey);
-    this.moltbook = new MoltbookClient(gmKey);
+    // Use secrets if available, otherwise fall back to loaded API key
+    const gmApiKey = CONFIG.GM_API_SECRET || this.gm.apiKey;
+    const mockApiKey = CONFIG.MOCK_API_SECRET || this.gm.apiKey;
+    this.api = new MoltMobAPI(gmApiKey);
+    this.moltbook = new MoltbookClient(mockApiKey);
     
     console.log(`\nLoading ${CONFIG.AGENT_COUNT} agents...`);
     for (let i = 0; i < CONFIG.AGENT_COUNT && i < AGENT_NAMES.length; i++) {
