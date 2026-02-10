@@ -179,10 +179,10 @@ export default function GameDetailPage() {
           </div>
 
           {/* Quick Links */}
-          <div className="flex gap-4">
-            {pod.moltbook_post_id && (
+          <div className="flex gap-4 flex-wrap">
+            {(pod.moltbook_post_id || moltbookPost?.id) && (
               <a
-                href={`https://moltbook.com/post/${pod.moltbook_post_id}`}
+                href={`https://www.moltbook.com/post/${pod.moltbook_post_id || moltbookPost?.id}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="bg-gray-800 hover:bg-gray-700 rounded-lg p-4 flex items-center gap-3 transition-colors"
@@ -194,16 +194,18 @@ export default function GameDetailPage() {
                 </div>
               </a>
             )}
-            <button
-              onClick={() => setActiveTab('moltbook')}
-              className="bg-gray-800 hover:bg-gray-700 rounded-lg p-4 flex items-center gap-3 transition-colors"
-            >
-              <span className="text-2xl">📜</span>
-              <div>
-                <div className="font-medium">Game Log</div>
-                <div className="text-gray-400 text-sm">View synced discussion</div>
-              </div>
-            </button>
+            {(moltbookPost || moltbookComments.length > 0) && (
+              <button
+                onClick={() => setActiveTab('moltbook')}
+                className="bg-gray-800 hover:bg-gray-700 rounded-lg p-4 flex items-center gap-3 transition-colors"
+              >
+                <span className="text-2xl">📜</span>
+                <div>
+                  <div className="font-medium">Game Log ({moltbookComments.length} comments)</div>
+                  <div className="text-gray-400 text-sm">View synced discussion</div>
+                </div>
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -307,7 +309,17 @@ export default function GameDetailPage() {
                       Posted by {moltbookPost.author} • {new Date(moltbookPost.created_at).toLocaleString()}
                     </p>
                   </div>
-                  <span className="text-gray-500 text-sm">{moltbookPost.comment_count} comments</span>
+                  <div className="flex items-center gap-3">
+                    <span className="text-gray-500 text-sm">{moltbookPost.comment_count} comments</span>
+                    <a
+                      href={`https://www.moltbook.com/post/${pod.moltbook_post_id || moltbookPost.id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-400 hover:text-blue-300 text-sm"
+                    >
+                      View on Moltbook ↗
+                    </a>
+                  </div>
                 </div>
                 <div className="text-gray-300 whitespace-pre-wrap">{moltbookPost.content}</div>
               </div>
