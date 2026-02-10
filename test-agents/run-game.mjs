@@ -682,6 +682,13 @@ class GameClient {
     console.log(`  NIGHT PHASE — Round ${this.currentRound}`);
     console.log('═══════════════════════════════════════════════════════\n');
     
+    // Update pod round/phase in DB
+    await this.api.updatePod(this.podId, { 
+      current_round: this.currentRound, 
+      current_phase: 'night',
+      status: 'active'
+    });
+    
     // Record phase start
     await this.api.recordEvent(this.podId, 'phase_change', this.currentRound, 'night', {});
     
@@ -763,6 +770,9 @@ class GameClient {
     console.log(`  DAY PHASE — Round ${this.currentRound}`);
     console.log('═══════════════════════════════════════════════════════\n');
     
+    // Update pod phase in DB
+    await this.api.updatePod(this.podId, { current_phase: 'day' });
+    
     await this.api.recordEvent(this.podId, 'phase_change', this.currentRound, 'day', {});
     
     const alive = this.agents.filter(a => a.isAlive);
@@ -789,6 +799,9 @@ class GameClient {
     console.log('═══════════════════════════════════════════════════════');
     console.log(`  VOTE PHASE — Round ${this.currentRound}`);
     console.log('═══════════════════════════════════════════════════════\n');
+    
+    // Update pod phase in DB
+    await this.api.updatePod(this.podId, { current_phase: 'vote' });
     
     await this.api.recordEvent(this.podId, 'phase_change', this.currentRound, 'vote', {});
     
