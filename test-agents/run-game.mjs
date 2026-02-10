@@ -23,9 +23,10 @@
  */
 
 import { Connection, Keypair, PublicKey, Transaction, SystemProgram, sendAndConfirmTransaction, LAMPORTS_PER_SOL } from '@solana/web3.js';
-import { ed25519, x25519 } from '@noble/curves/ed25519';
-import { xchacha20poly1305 } from '@noble/ciphers/chacha';
-import { randomBytes } from '@noble/hashes/utils';
+import { ed25519, x25519 } from '@noble/curves/ed25519.js';
+import { xchacha20poly1305 } from '@noble/ciphers/chacha.js';
+import { randomBytes } from '@noble/hashes/utils.js';
+import { sha512 } from '@noble/hashes/sha512.js';
 import { readFileSync, existsSync, writeFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
@@ -65,15 +66,19 @@ const AGENT_NAMES = [
 
 // ============ CRYPTO HELPERS ============
 
-/** Convert Ed25519 public key to X25519 */
-function ed25519ToX25519Pub(ed25519Pub) {
-  return ed25519.ExtendedPoint.fromHex(ed25519Pub).toX25519();
+/** Convert Ed25519 public key to X25519 (Montgomery form) */
+function ed25519ToX25519Pub(ed25519PubKey) {
+  return ed25519.utils.toMontgomery(ed25519PubKey);
 }
 
 /** Convert Ed25519 private key (32 bytes) to X25519 */
-function ed25519ToX25519Priv(ed25519Priv) {
-  const hash = ed25519.utils.sha512(ed25519Priv);
-  const scalar = hash.slice(0, 32);
+function ed25519ToX25519Priv(ed25519PrivKey) {
+  if (typeof ed25519.utils.toMontgomerySecret === 'function') {
+    return ed25519.utils.toMontgomerySecret(ed25519PrivKey);
+  }
+  // Manual conversion if toMontgomerySecret doesn't exist
+  const hash = sha512(ed25519PrivKey);
+  const scalar = new Uint8Array(hash.slice(0, 32));
   scalar[0] &= 248;
   scalar[31] &= 127;
   scalar[31] |= 64;
