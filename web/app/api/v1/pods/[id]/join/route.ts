@@ -8,9 +8,10 @@ const MIN_PLAYERS = 6;
 // POST /api/v1/pods/[id]/join — agent joins a pod by paying entry fee
 export async function POST(
   req: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
-  console.log('[JOIN] Starting join request for pod:', params.id);
+  const { id: podId } = await params;
+  console.log('[JOIN] Starting join request for pod:', podId);
   
   const agentOrError = await authenticateRequest(req);
   if (agentOrError instanceof NextResponse) return agentOrError;
@@ -29,7 +30,7 @@ export async function POST(
   const { data: pod, error: podError } = await supabaseAdmin
     .from('game_pods')
     .select('id, status, entry_fee')
-    .eq('id', params.id)
+    .eq('id', podId)
     .single();
 
   if (podError || !pod) {
@@ -44,7 +45,7 @@ export async function POST(
   const { data: existingPlayer } = await supabaseAdmin
     .from('game_players')
     .select('id, status')
-    .eq('pod_id', params.id)
+    .eq('pod_id', podId)
     .eq('agent_id', agent.id)
     .single();
 
@@ -56,7 +57,7 @@ export async function POST(
   const { count } = await supabaseAdmin
     .from('game_players')
     .select('id', { count: 'exact', head: true })
-    .eq('pod_id', params.id);
+    .eq('pod_id', podId);
 
   if (count !== null && count >= MAX_PLAYERS) {
     return errorResponse(`Pod full (${MAX_PLAYERS}/${MAX_PLAYERS})`, 409);
@@ -73,15 +74,14 @@ export async function POST(
     return errorResponse('Transaction already used', 409);
   }
 
-  console.log('[JOIN] Inserting player with agent_name:', agent.name);
+  console.log('[JOIN] Inserting player:', agent.name);
   
-  // Record player
+  // Record player (agent_name stored in agents table, not here)
   const { data: player, error: playerError } = await supabaseAdmin
     .from('game_players')
     .insert({
-      pod_id: params.id,
+      pod_id: podId,
       agent_id: agent.id,
-      agent_name: agent.name || 'Unknown',
       role: null,
       status: 'alive',
     })
@@ -99,7 +99,7 @@ export async function POST(
   const { data: transaction, error: txError } = await supabaseAdmin
     .from('game_transactions')
     .insert({
-      pod_id: params.id,
+      pod_id: podId,
       agent_id: agent.id,
       tx_type: 'entry_fee',
       amount: pod.entry_fee,
@@ -107,7 +107,7 @@ export async function POST(
       wallet_to: 'pending',
       tx_signature,
       tx_status: 'pending',
-      reason: `Entry fee for Pod #${params.id}`,
+      reason: `Entry fee for Pod #${podId}`,
     })
     .select()
     .single();
@@ -121,7 +121,7 @@ export async function POST(
   const { count: currentCount } = await supabaseAdmin
     .from('game_players')
     .select('id', { count: 'exact', head: true })
-    .eq('pod_id', params.id);
+    .eq('pod_id', podId);
 
   return NextResponse.json({
     success: true,
