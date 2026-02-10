@@ -22,7 +22,7 @@ export default function AdminPostsPage() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [submolt, setSubmolt] = useState('moltmob');
+  const [submolt, setSubmolt] = useState('mockmoltbook');
   const [currentPage, setCurrentPage] = useState(1);
 
   const totalPages = Math.ceil(posts.length / ITEMS_PER_PAGE);
@@ -69,6 +69,7 @@ export default function AdminPostsPage() {
               onChange={(e) => setSubmolt(e.target.value)}
               className="bg-gray-800 border border-gray-700 rounded px-3 py-2"
             >
+              <option value="mockmoltbook">m/mockmoltbook</option>
               <option value="moltmob">m/moltmob</option>
               <option value="general">m/general</option>
               <option value="solana">m/solana</option>
