@@ -1,31 +1,32 @@
 #!/usr/bin/env node
 /**
- * MoltMob Full Game Test - API-based Agent Simulation
+ * MoltMob Full Game Test - Moltbook-Integrated Agent Simulation
  * 
- * Simulates real agents playing MoltMob by:
- * - Reading each agent's SOUL.md for personality
- * - Calling api/v1/* endpoints (like real Moltbook-connected agents)
- * - Making real Solana transactions on devnet
- * - Playing the game with strategic decisions based on persona
+ * Game Flow:
+ * 1. GM posts game announcement on Moltbook (u/moltmob)
+ * 2. Agents pay x402 to join pod
+ * 3. GM assigns encrypted roles via X25519 shared secret
+ * 4. Night: Clawboss targets (encrypted comment)
+ * 5. Day: Agents discuss via Moltbook comments (public deduction)
+ * 6. Vote: Encrypted vote comments
+ * 7. Repeat until win condition
+ * 
+ * X25519 Key Exchange:
+ * - Agent Ed25519 wallet → X25519 keypair (via @noble/curves)
+ * - Shared secret = x25519(agentPriv, gmPub) = x25519(gmPriv, agentPub)
+ * - Used for xChaCha20-Poly1305 encryption of roles/votes
  * 
  * USAGE:
- *   # Run with 6 agents (minimum)
  *   node run-game.mjs
- * 
- *   # Run with 12 agents
  *   AGENT_COUNT=12 node run-game.mjs
- * 
- *   # Use real Moltbook (vs mock)
- *   USE_REAL_MOLTBOOK=true node run-game.mjs
- * 
- * PREREQUISITES:
- *   1. Agents registered in database (run register-all-agents.mjs first)
- *   2. Agent wallets funded with devnet SOL (run fund-agents-from-gm.mjs)
- *   3. API server running (cd web && npm run dev or deployed to Vercel)
+ *   USE_REAL_MOLTBOOK=true MOLTBOOK_API_KEY=key node run-game.mjs
  */
 
 import { Connection, Keypair, PublicKey, Transaction, SystemProgram, sendAndConfirmTransaction, LAMPORTS_PER_SOL } from '@solana/web3.js';
-import { readFileSync, existsSync } from 'fs';
+import { ed25519, x25519 } from '@noble/curves/ed25519';
+import { xchacha20poly1305 } from '@noble/ciphers/chacha';
+import { randomBytes } from '@noble/hashes/utils';
+import { readFileSync, existsSync, writeFileSync } from 'fs';
 import { join, dirname } from 'path';
 import { fileURLToPath } from 'url';
 
@@ -33,23 +34,70 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 
 // ============ CONFIGURATION ============
 const CONFIG = {
-  API_URL: process.env.API_URL || 'https://www.moltmob.com',
+  // API endpoints
+  MOLTMOB_API: process.env.MOLTMOB_API || 'https://www.moltmob.com/api/v1',
+  MOLTBOOK_API: process.env.USE_REAL_MOLTBOOK === 'true' 
+    ? 'https://www.moltbook.com/api/v1'
+    : (process.env.MOLTMOB_API || 'https://www.moltmob.com') + '/api/mock/moltbook',
+  
   SOLANA_RPC: process.env.SOLANA_RPC || 'https://api.devnet.solana.com',
   ENTRY_FEE: 100_000_000, // 0.1 SOL
   AGENT_COUNT: parseInt(process.env.AGENT_COUNT || '6', 10),
-  GM_WALLET: '79K4v3MDcP9mjC3wEzRRg5JUYfnag3AYWxux1wtn1Avz',
+  
+  // Moltbook
+  USE_REAL_MOLTBOOK: process.env.USE_REAL_MOLTBOOK === 'true',
+  MOLTBOOK_API_KEY: process.env.MOLTBOOK_API_KEY,
+  SUBMOLT_MOLTMOB: '4ef0d624-d558-4c20-bd78-2612558e9d66',
+  
+  // GM wallet
+  GM_FOLDER: 'GM',
   
   // Timing
-  PHASE_WAIT_MS: 2000,
-  POLL_INTERVAL_MS: 3000,
+  DISCUSSION_DELAY_MS: 1000,
+  VOTE_DELAY_MS: 500,
 };
 
-// Agent names in order
 const AGENT_NAMES = [
   'TestAgentA', 'TestAgentB', 'TestAgentC', 'TestAgentD',
   'TestAgentE', 'TestAgentF', 'TestAgentG', 'TestAgentH',
   'TestAgentI', 'TestAgentJ', 'TestAgentK', 'TestAgentL',
 ];
+
+// ============ CRYPTO HELPERS ============
+
+/** Convert Ed25519 public key to X25519 */
+function ed25519ToX25519Pub(ed25519Pub) {
+  return ed25519.ExtendedPoint.fromHex(ed25519Pub).toX25519();
+}
+
+/** Convert Ed25519 private key (32 bytes) to X25519 */
+function ed25519ToX25519Priv(ed25519Priv) {
+  const hash = ed25519.utils.sha512(ed25519Priv);
+  const scalar = hash.slice(0, 32);
+  scalar[0] &= 248;
+  scalar[31] &= 127;
+  scalar[31] |= 64;
+  return scalar;
+}
+
+/** Compute X25519 shared secret */
+function computeSharedSecret(myPrivX25519, theirPubX25519) {
+  return x25519.scalarMult(myPrivX25519, theirPubX25519);
+}
+
+/** Encrypt with xChaCha20-Poly1305 */
+function encrypt(sharedSecret, plaintext) {
+  const nonce = randomBytes(24);
+  const cipher = xchacha20poly1305(sharedSecret, nonce);
+  const ciphertext = cipher.encrypt(plaintext);
+  return { nonce, ciphertext };
+}
+
+/** Decrypt with xChaCha20-Poly1305 */
+function decrypt(sharedSecret, nonce, ciphertext) {
+  const cipher = xchacha20poly1305(sharedSecret, nonce);
+  return cipher.decrypt(ciphertext);
+}
 
 // ============ AGENT CLASS ============
 class Agent {
@@ -63,7 +111,15 @@ class Agent {
     this.agentId = null;
     this.playerId = null;
     this.role = null;
+    this.team = null;
     this.isAlive = true;
+    
+    // Crypto keys
+    this.ed25519Priv = null;
+    this.ed25519Pub = null;
+    this.x25519Priv = null;
+    this.x25519Pub = null;
+    this.sharedSecretWithGM = null;
   }
 
   async load() {
@@ -78,6 +134,12 @@ class Agent {
     this.wallet = walletData.publicKey;
     this.keypair = Keypair.fromSecretKey(new Uint8Array(walletData.secretKey));
     
+    // Derive X25519 keys from Ed25519
+    this.ed25519Priv = new Uint8Array(walletData.secretKey).slice(0, 32);
+    this.ed25519Pub = this.keypair.publicKey.toBytes();
+    this.x25519Priv = ed25519ToX25519Priv(this.ed25519Priv);
+    this.x25519Pub = ed25519ToX25519Pub(this.ed25519Pub);
+    
     // Load SOUL.md
     const soulPath = join(basePath, 'soul.md');
     if (existsSync(soulPath)) {
@@ -91,16 +153,12 @@ class Agent {
       const state = JSON.parse(readFileSync(statePath, 'utf-8'));
       this.apiKey = state.api_key;
     }
-    
-    console.log(`  ✓ ${this.name} loaded (${this.persona || 'default persona'})`);
   }
 
   parseSoul() {
-    // Extract persona from SOUL.md
     const personaMatch = this.soul.match(/\*\*Persona:\*\*\s*(.+)/);
     this.persona = personaMatch ? personaMatch[1].trim() : 'strategic player';
     
-    // Extract traits
     const styleMatch = this.soul.match(/\*\*Style:\*\*\s*(.+)/);
     this.playStyle = styleMatch ? styleMatch[1].trim() : 'cautious';
     
@@ -111,34 +169,91 @@ class Agent {
     this.riskTolerance = riskMatch ? riskMatch[1].trim() : 'medium';
   }
 
-  async callApi(endpoint, method = 'GET', body = null) {
-    const url = `${CONFIG.API_URL}/api/v1${endpoint}`;
-    const headers = {
-      'Content-Type': 'application/json',
-    };
-    
-    if (this.apiKey) {
-      headers['Authorization'] = `Bearer ${this.apiKey}`;
-    }
-    
-    const options = { method, headers };
-    if (body) {
-      options.body = JSON.stringify(body);
-    }
-    
-    const res = await fetch(url, options);
-    const data = await res.json().catch(() => ({}));
-    
-    return { status: res.status, ok: res.ok, data };
+  computeSharedSecretWithGM(gmX25519Pub) {
+    this.sharedSecretWithGM = computeSharedSecret(this.x25519Priv, gmX25519Pub);
   }
 
-  async payEntryFee(podVault) {
+  decryptMessage(nonce, ciphertext) {
+    if (!this.sharedSecretWithGM) throw new Error('No shared secret with GM');
+    return decrypt(this.sharedSecretWithGM, nonce, ciphertext);
+  }
+
+  encryptMessage(plaintext) {
+    if (!this.sharedSecretWithGM) throw new Error('No shared secret with GM');
+    return encrypt(this.sharedSecretWithGM, plaintext);
+  }
+
+  generateDiscussion(round, aliveAgents, eliminatedLastRound) {
+    const otherNames = aliveAgents.filter(a => a.name !== this.name).map(a => a.name);
+    const randomOther = otherNames[Math.floor(Math.random() * otherNames.length)];
+    
+    const phrases = [];
+    
+    // Role-based comments (if Moltbreaker, try to blend in)
+    if (this.team === 'deception') {
+      phrases.push(
+        `I've been watching everyone closely. Something's off about the votes.`,
+        `We need to focus on behavior patterns, not random accusations.`,
+        `${randomOther} has been suspiciously quiet. Just saying.`,
+        `Let's not let emotions drive our votes. Think logically.`,
+      );
+    } else {
+      phrases.push(
+        `I'm watching everyone carefully. EXFOLIATE!`,
+        `The Clawboss hides among us. We must find them.`,
+        `Trust no one. Even your shell could betray you.`,
+        `The water's getting warmer. Stay sharp, crustaceans.`,
+        `Let's analyze the voting patterns from last round.`,
+      );
+    }
+    
+    // Persona-based additions
+    if (this.bluffsOften) {
+      phrases.push(
+        `I have a theory about who the Clawboss might be...`,
+        `Something ${randomOther} said earlier doesn't add up.`,
+      );
+    }
+    
+    if (this.riskTolerance === 'high') {
+      phrases.push(
+        `We need to make bold moves! I'm voting for ${randomOther}.`,
+        `Stop being so passive! The Clawboss is laughing at us.`,
+      );
+    }
+    
+    if (eliminatedLastRound) {
+      phrases.push(
+        `${eliminatedLastRound} is gone. What does that tell us?`,
+        `Interesting that ${eliminatedLastRound} was targeted...`,
+      );
+    }
+    
+    return phrases[Math.floor(Math.random() * phrases.length)];
+  }
+
+  chooseVoteTarget(aliveAgents) {
+    const others = aliveAgents.filter(a => a.name !== this.name);
+    
+    if (this.team === 'deception') {
+      // Moltbreakers: vote for loyalists, avoid voting for each other
+      const loyalists = others.filter(a => a.team !== 'deception');
+      if (loyalists.length > 0) {
+        return loyalists[Math.floor(Math.random() * loyalists.length)];
+      }
+    }
+    
+    // Random vote
+    return others[Math.floor(Math.random() * others.length)];
+  }
+
+  async payEntryFee(gmWallet) {
     const connection = new Connection(CONFIG.SOLANA_RPC, 'confirmed');
     
     const tx = new Transaction().add(
       SystemProgram.transfer({
         fromPubkey: this.keypair.publicKey,
-        toPubkey: new PublicKey(podVault),
+        toPubkey: new PublicKey(gmWallet),
         lamports: CONFIG.ENTRY_FEE,
       })
     );
@@ -146,193 +261,308 @@ class Agent {
     const signature = await sendAndConfirmTransaction(connection, tx, [this.keypair]);
     return signature;
   }
+}
 
-  generateDiscussion() {
-    const phrases = [
-      `I'm watching everyone carefully. EXFOLIATE!`,
-      `The Clawboss hides among us. We must find them.`,
-      `Trust no one. Even your shell could betray you.`,
-      `The water's getting warmer. Stay sharp, crustaceans.`,
-      `Let's not rush to judgment. Observe first, pinch later.`,
-    ];
-    
-    // Add persona-specific flavor
-    if (this.bluffsOften) {
-      phrases.push(`I have information that could change everything...`);
-      phrases.push(`Something's not right about the votes...`);
-    }
-    
-    if (this.riskTolerance === 'high') {
-      phrases.push(`We need to make bold moves!`);
-      phrases.push(`Anyone else notice ${this.getRandomAgentName()}'s suspicious timing?`);
-    }
-    
-    return phrases[Math.floor(Math.random() * phrases.length)];
+// ============ GAME MASTER CLASS ============
+class GameMaster {
+  constructor() {
+    this.wallet = null;
+    this.keypair = null;
+    this.x25519Priv = null;
+    this.x25519Pub = null;
+    this.apiKey = CONFIG.MOLTBOOK_API_KEY;
   }
 
-  getRandomAgentName() {
-    const others = AGENT_NAMES.filter(n => n !== this.name);
-    return others[Math.floor(Math.random() * others.length)];
+  async load() {
+    const walletPath = join(__dirname, 'live-agents', CONFIG.GM_FOLDER, 'wallet.json');
+    const walletData = JSON.parse(readFileSync(walletPath, 'utf-8'));
+    this.wallet = walletData.publicKey;
+    this.keypair = Keypair.fromSecretKey(new Uint8Array(walletData.secretKey));
+    
+    const ed25519Priv = new Uint8Array(walletData.secretKey).slice(0, 32);
+    const ed25519Pub = this.keypair.publicKey.toBytes();
+    this.x25519Priv = ed25519ToX25519Priv(ed25519Priv);
+    this.x25519Pub = ed25519ToX25519Pub(ed25519Pub);
   }
 
-  chooseVoteTarget(aliveAgents, gameEvents) {
-    // Simple voting logic based on persona
-    const others = aliveAgents.filter(a => a.name !== this.name);
-    
-    if (this.riskTolerance === 'high') {
-      // High risk: vote for whoever spoke most suspiciously
-      return others[Math.floor(Math.random() * others.length)];
-    }
-    
-    // Default: random vote among others
-    return others[Math.floor(Math.random() * others.length)];
+  computeSharedSecretWith(agentX25519Pub) {
+    return computeSharedSecret(this.x25519Priv, agentX25519Pub);
+  }
+
+  encryptForAgent(agent, plaintext) {
+    const sharedSecret = this.computeSharedSecretWith(agent.x25519Pub);
+    return encrypt(sharedSecret, plaintext);
   }
 }
 
-// ============ GAME ORCHESTRATOR ============
+// ============ MOLTBOOK CLIENT ============
+class MoltbookClient {
+  constructor(apiKey) {
+    this.apiKey = apiKey;
+    this.baseUrl = CONFIG.MOLTBOOK_API;
+  }
+
+  async post(endpoint, body) {
+    const headers = {
+      'Content-Type': 'application/json',
+    };
+    if (this.apiKey) {
+      headers['Authorization'] = `Bearer ${this.apiKey}`;
+    }
+    
+    const res = await fetch(`${this.baseUrl}${endpoint}`, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+    });
+    
+    return { status: res.status, ok: res.ok, data: await res.json().catch(() => ({})) };
+  }
+
+  async createGamePost(podNumber, playerCount, entryFee) {
+    const { status, data } = await this.post('/posts', {
+      title: `🦞 Pod #${podNumber} - Game Starting!`,
+      content: `The water warms. ${playerCount} crustaceans have gathered.\n\n` +
+        `**Entry fee:** ${entryFee} SOL\n` +
+        `**Prize pool:** ${(entryFee * playerCount).toFixed(2)} SOL\n\n` +
+        `The Clawboss hides among us. EXFOLIATE! 🔥`,
+      submolt_id: CONFIG.SUBMOLT_MOLTMOB,
+    });
+    
+    if (status === 201 || status === 200) {
+      console.log(`  ✓ Game post created: ${data.post?.id || data.id}`);
+      return data.post?.id || data.id;
+    } else {
+      console.log(`  ⚠ Post failed (${status}): ${data.error || 'unknown'}`);
+      return null;
+    }
+  }
+
+  async comment(postId, content, agentName = null) {
+    const prefix = agentName ? `**[${agentName}]** ` : '';
+    const { status, data } = await this.post(`/posts/${postId}/comments`, {
+      content: prefix + content,
+    });
+    
+    return { ok: status === 201 || status === 200, data };
+  }
+
+  async commentEncrypted(postId, encryptedPayload, agentName) {
+    // Format: [ENCRYPTED:{nonce}:{ciphertext}]
+    const nonceB64 = Buffer.from(encryptedPayload.nonce).toString('base64');
+    const ctB64 = Buffer.from(encryptedPayload.ciphertext).toString('base64');
+    const content = `**[${agentName}]** 🔐 [ENCRYPTED:${nonceB64}:${ctB64}]`;
+    
+    return this.comment(postId, content);
+  }
+}
+
+// ============ GAME CLIENT ============
 class GameClient {
   constructor() {
     this.agents = [];
+    this.gm = new GameMaster();
+    this.moltbook = null;
     this.podId = null;
     this.podNumber = null;
-    this.currentPhase = null;
+    this.postId = null;
+    this.currentPhase = 'lobby';
     this.currentRound = 0;
+    this.eliminatedThisRound = null;
   }
 
-  async loadAgents(count) {
-    console.log(`\nLoading ${count} agents...`);
+  async initialize() {
+    console.log('╔══════════════════════════════════════════════════════╗');
+    console.log('║  MOLTMOB GAME TEST - Moltbook-Integrated Simulation  ║');
+    console.log('╚══════════════════════════════════════════════════════╝\n');
     
-    for (let i = 0; i < count && i < AGENT_NAMES.length; i++) {
+    console.log(`Moltbook Mode: ${CONFIG.USE_REAL_MOLTBOOK ? '🌐 REAL' : '🔧 MOCK'}\n`);
+    
+    // Load GM
+    await this.gm.load();
+    console.log(`✓ GM loaded: ${this.gm.wallet.slice(0, 8)}...`);
+    
+    // Initialize Moltbook client
+    this.moltbook = new MoltbookClient(this.gm.apiKey);
+    
+    // Load agents
+    console.log(`\nLoading ${CONFIG.AGENT_COUNT} agents...`);
+    for (let i = 0; i < CONFIG.AGENT_COUNT && i < AGENT_NAMES.length; i++) {
       const name = AGENT_NAMES[i];
       const agent = new Agent(name, name);
       await agent.load();
+      agent.computeSharedSecretWithGM(this.gm.x25519Pub);
       this.agents.push(agent);
+      console.log(`  ✓ ${name} (${agent.persona || 'default'})`);
     }
-    
     console.log(`✓ Loaded ${this.agents.length} agents\n`);
   }
 
-  async registerAgents() {
-    console.log('Registering agents with API...');
+  async joinPhase() {
+    console.log('═══════════════════════════════════════════════════════');
+    console.log('  LOBBY PHASE - Agents Joining');
+    console.log('═══════════════════════════════════════════════════════\n');
     
-    for (const agent of this.agents) {
-      const { status, data } = await agent.callApi('/agents/register', 'POST', {
-        wallet_pubkey: agent.wallet,
-        name: agent.name,
-        moltbook_username: agent.name.toLowerCase(),
-      });
-      
-      if (status === 201 || status === 200) {
-        agent.apiKey = data.api_key || data.agent?.api_key;
-        agent.agentId = data.agent?.id || data.id;
-        console.log(`  ✓ ${agent.name} registered`);
-      } else if (status === 409) {
-        // Already exists - fetch the agent
-        console.log(`  ○ ${agent.name} already registered`);
-      } else {
-        console.log(`  ✗ ${agent.name} failed: ${data.error || status}`);
-      }
-    }
-  }
-
-  async joinPod() {
-    console.log('\n=== JOINING POD ===\n');
+    this.podNumber = Math.floor(Math.random() * 9000) + 1000;
+    this.podId = crypto.randomUUID();
     
-    const gmWallet = CONFIG.GM_WALLET;
+    console.log(`Pod #${this.podNumber} created\n`);
     
+    // Each agent pays x402 and joins
     for (const agent of this.agents) {
       try {
-        // Pay entry fee
-        console.log(`  ${agent.name}: paying 0.1 SOL...`);
-        const txSig = await agent.payEntryFee(gmWallet);
-        console.log(`  ${agent.name}: tx ${txSig.slice(0, 16)}...`);
-        
-        // Join via /play endpoint
-        const { status, data } = await fetch(`${CONFIG.API_URL}/api/v1/play`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'x-wallet-pubkey': agent.wallet,
-            'x402': `moltmob:${CONFIG.ENTRY_FEE}:${agent.name}:${txSig}`,
-          },
-          body: JSON.stringify({
-            moltbook_username: agent.name,
-          }),
-        }).then(r => r.json().then(d => ({ status: r.status, data: d })));
-        
-        if (data.success) {
-          agent.agentId = data.player?.id;
-          this.podId = data.game?.pod_id;
-          this.podNumber = data.game?.pod_number;
-          console.log(`  ✓ ${agent.name} joined Pod #${this.podNumber}`);
-        } else {
-          console.log(`  ✗ ${agent.name}: ${data.error || 'failed'}`);
-        }
-        
-        // Small delay between joins
-        await this.sleep(500);
-        
+        const txSig = await agent.payEntryFee(this.gm.wallet);
+        console.log(`  ${agent.name}: paid 0.1 SOL (${txSig.slice(0, 12)}...)`);
+        await this.sleep(300);
       } catch (err) {
-        console.log(`  ✗ ${agent.name}: ${err.message}`);
+        console.log(`  ${agent.name}: payment failed - ${err.message}`);
       }
     }
     
-    console.log(`\n✓ Pod #${this.podNumber} - ${this.agents.length} agents joined`);
-  }
-
-  async pollGameState() {
-    const agent = this.agents[0]; // Use first agent to poll
-    const { data } = await agent.callApi(`/pods/${this.podId}`);
-    return data;
-  }
-
-  async waitForPhase(targetPhase) {
-    console.log(`  Waiting for ${targetPhase} phase...`);
+    // Create game post on Moltbook
+    console.log('\nCreating game post on Moltbook...');
+    this.postId = await this.moltbook.createGamePost(
+      this.podNumber,
+      this.agents.length,
+      CONFIG.ENTRY_FEE / LAMPORTS_PER_SOL
+    );
     
-    for (let i = 0; i < 60; i++) { // Max 3 minutes
-      const state = await this.pollGameState();
-      
-      if (state.pod?.current_phase === targetPhase) {
-        this.currentPhase = targetPhase;
-        this.currentRound = state.pod?.current_round || this.currentRound;
-        return state;
-      }
-      
-      await this.sleep(CONFIG.POLL_INTERVAL_MS);
+    console.log(`\n✓ All ${this.agents.length} agents joined Pod #${this.podNumber}`);
+    console.log(`  Prize pool: ${(CONFIG.ENTRY_FEE * this.agents.length) / LAMPORTS_PER_SOL} SOL\n`);
+  }
+
+  async roleAssignment() {
+    console.log('═══════════════════════════════════════════════════════');
+    console.log('  ROLE ASSIGNMENT');
+    console.log('═══════════════════════════════════════════════════════\n');
+    
+    // Assign roles: 1 clawboss, 2 krill, 1 shellguard, rest initiates
+    const roles = ['clawboss', 'krill', 'krill', 'shellguard'];
+    while (roles.length < this.agents.length) roles.push('initiate');
+    
+    // Shuffle
+    for (let i = roles.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [roles[i], roles[j]] = [roles[j], roles[i]];
     }
     
-    throw new Error(`Timeout waiting for ${targetPhase}`);
+    // Assign and encrypt
+    for (let i = 0; i < this.agents.length; i++) {
+      const agent = this.agents[i];
+      const role = roles[i];
+      agent.role = role;
+      agent.team = ['clawboss', 'krill', 'shellguard'].includes(role) ? 'deception' : 'loyal';
+      
+      // Encrypt role for agent
+      const rolePayload = JSON.stringify({
+        type: 'role_assignment',
+        role,
+        team: agent.team,
+        timestamp: Date.now(),
+      });
+      const encrypted = this.gm.encryptForAgent(agent, new TextEncoder().encode(rolePayload));
+      
+      console.log(`  ${agent.name} → ${role} (encrypted)`);
+    }
+    
+    const deception = this.agents.filter(a => a.team === 'deception').length;
+    const loyal = this.agents.filter(a => a.team === 'loyal').length;
+    console.log(`\n  Team composition: ${deception} Moltbreakers, ${loyal} Loyalists\n`);
   }
 
-  async playDayPhase() {
-    console.log(`\n=== DAY PHASE (Round ${this.currentRound}) ===\n`);
+  async nightPhase() {
+    this.currentRound++;
+    console.log('═══════════════════════════════════════════════════════');
+    console.log(`  NIGHT PHASE - Round ${this.currentRound}`);
+    console.log('═══════════════════════════════════════════════════════\n');
     
-    const aliveAgents = this.agents.filter(a => a.isAlive);
+    // Clawboss picks target
+    const clawboss = this.agents.find(a => a.role === 'clawboss' && a.isAlive);
+    if (!clawboss) {
+      console.log('  No Clawboss alive - skipping night kill\n');
+      return;
+    }
     
-    // Each alive agent posts a discussion comment
-    for (const agent of aliveAgents) {
-      const comment = agent.generateDiscussion();
+    const targets = this.agents.filter(a => a.isAlive && a.team !== 'deception');
+    if (targets.length === 0) return;
+    
+    const target = targets[Math.floor(Math.random() * targets.length)];
+    
+    // Post encrypted target to Moltbook
+    const targetPayload = JSON.stringify({
+      type: 'night_action',
+      action: 'pinch',
+      target: target.name,
+      round: this.currentRound,
+    });
+    const encrypted = clawboss.encryptMessage(new TextEncoder().encode(targetPayload));
+    
+    if (this.postId) {
+      await this.moltbook.commentEncrypted(this.postId, encrypted, clawboss.name);
+    }
+    
+    console.log(`  ${clawboss.name} targets ${target.name} (encrypted)\n`);
+    
+    // Resolve: target is eliminated
+    target.isAlive = false;
+    this.eliminatedThisRound = target.name;
+    console.log(`  💀 ${target.name} (${target.role}) was PINCHED!\n`);
+  }
+
+  async dayPhase() {
+    console.log('═══════════════════════════════════════════════════════');
+    console.log(`  DAY PHASE - Round ${this.currentRound}`);
+    console.log('═══════════════════════════════════════════════════════\n');
+    
+    const alive = this.agents.filter(a => a.isAlive);
+    
+    // Announce elimination
+    if (this.postId && this.eliminatedThisRound) {
+      await this.moltbook.comment(this.postId,
+        `☀️ **Day ${this.currentRound}** — ${this.eliminatedThisRound} was found PINCHED at dawn! ${alive.length} remain.`
+      );
+    }
+    
+    // Each agent discusses
+    for (const agent of alive) {
+      const comment = agent.generateDiscussion(this.currentRound, alive, this.eliminatedThisRound);
       console.log(`  ${agent.name}: "${comment}"`);
       
-      // TODO: Post to actual game discussion endpoint when available
-      await this.sleep(300);
+      if (this.postId) {
+        await this.moltbook.comment(this.postId, comment, agent.name);
+        await this.sleep(CONFIG.DISCUSSION_DELAY_MS);
+      }
     }
+    console.log('');
   }
 
-  async playVotePhase() {
-    console.log(`\n=== VOTE PHASE (Round ${this.currentRound}) ===\n`);
+  async votePhase() {
+    console.log('═══════════════════════════════════════════════════════');
+    console.log(`  VOTE PHASE - Round ${this.currentRound}`);
+    console.log('═══════════════════════════════════════════════════════\n');
     
-    const aliveAgents = this.agents.filter(a => a.isAlive);
+    const alive = this.agents.filter(a => a.isAlive);
     const votes = new Map();
     
-    // Each alive agent votes
-    for (const agent of aliveAgents) {
-      const target = agent.chooseVoteTarget(aliveAgents, []);
+    // Each agent votes (encrypted)
+    for (const agent of alive) {
+      const target = agent.chooseVoteTarget(alive);
       votes.set(agent.name, target.name);
+      
+      // Encrypt vote
+      const votePayload = JSON.stringify({
+        type: 'vote',
+        target: target.name,
+        round: this.currentRound,
+      });
+      const encrypted = agent.encryptMessage(new TextEncoder().encode(votePayload));
+      
       console.log(`  ${agent.name} votes for ${target.name}`);
       
-      // TODO: Submit vote to actual endpoint when available
-      await this.sleep(200);
+      if (this.postId) {
+        await this.moltbook.commentEncrypted(this.postId, encrypted, agent.name);
+        await this.sleep(CONFIG.VOTE_DELAY_MS);
+      }
     }
     
     // Tally votes
@@ -341,46 +571,101 @@ class GameClient {
       tally[target] = (tally[target] || 0) + 1;
     }
     
-    // Find elimination
     const sorted = Object.entries(tally).sort((a, b) => b[1] - a[1]);
     if (sorted.length > 0) {
       const [eliminated, voteCount] = sorted[0];
       const agent = this.agents.find(a => a.name === eliminated);
       if (agent) {
         agent.isAlive = false;
-        console.log(`\n  🔥 ${eliminated} was cooked with ${voteCount} votes!`);
+        console.log(`\n  🔥 ${eliminated} (${agent.role}) was COOKED with ${voteCount} votes!\n`);
+        
+        if (this.postId) {
+          await this.moltbook.comment(this.postId,
+            `🔥 **COOKED!** ${eliminated} received ${voteCount} votes and has been eliminated!`
+          );
+        }
       }
     }
   }
 
-  async run() {
-    console.log('╔══════════════════════════════════════════════════╗');
-    console.log('║     MOLTMOB GAME TEST - API Agent Simulation     ║');
-    console.log('╚══════════════════════════════════════════════════╝\n');
+  checkWinCondition() {
+    const alive = this.agents.filter(a => a.isAlive);
+    const deceptionAlive = alive.filter(a => a.team === 'deception').length;
+    const loyalAlive = alive.filter(a => a.team === 'loyal').length;
+    
+    if (deceptionAlive === 0) {
+      return { winner: 'loyalists', reason: 'All Moltbreakers eliminated' };
+    }
+    
+    if (deceptionAlive >= loyalAlive) {
+      return { winner: 'moltbreakers', reason: 'Moltbreakers have majority' };
+    }
+    
+    return null;
+  }
 
+  async run() {
     try {
-      // Load agents
-      await this.loadAgents(CONFIG.AGENT_COUNT);
+      await this.initialize();
+      await this.joinPhase();
+      await this.roleAssignment();
       
-      // Register agents
-      await this.registerAgents();
-      
-      // Join pod with payments
-      await this.joinPod();
-      
-      console.log('\n✓ Game setup complete!');
-      console.log(`  Pod ID: ${this.podId}`);
-      console.log(`  Pod #${this.podNumber}`);
-      console.log(`  View at: ${CONFIG.API_URL}/admin/games/${this.podId}`);
-      
-      // Note: Full game loop requires GM to start the game
-      // For now, we've demonstrated the API flow
-      console.log('\n📋 Agents are in the pod, ready for GM to start the game.');
-      console.log('   Use the game-orchestrator-db.mjs to run full game with this pod.\n');
+      // Game loop
+      while (true) {
+        await this.nightPhase();
+        
+        let result = this.checkWinCondition();
+        if (result) {
+          await this.announceWinner(result);
+          break;
+        }
+        
+        await this.dayPhase();
+        await this.votePhase();
+        
+        result = this.checkWinCondition();
+        if (result) {
+          await this.announceWinner(result);
+          break;
+        }
+        
+        this.eliminatedThisRound = null;
+      }
       
     } catch (err) {
       console.error('\n❌ Game failed:', err.message);
+      console.error(err.stack);
       process.exit(1);
+    }
+  }
+
+  async announceWinner(result) {
+    console.log('═══════════════════════════════════════════════════════');
+    console.log('  GAME OVER');
+    console.log('═══════════════════════════════════════════════════════\n');
+    
+    const winners = this.agents.filter(a => 
+      (result.winner === 'moltbreakers' && a.team === 'deception') ||
+      (result.winner === 'loyalists' && a.team === 'loyal')
+    );
+    
+    if (result.winner === 'moltbreakers') {
+      console.log(`  💀 MOLTBREAKERS WIN! ${result.reason}`);
+    } else {
+      console.log(`  🏆 LOYALISTS WIN! ${result.reason}`);
+    }
+    
+    console.log(`\n  Winners: ${winners.map(a => `${a.name} (${a.role})`).join(', ')}`);
+    console.log(`  Rounds played: ${this.currentRound}\n`);
+    
+    if (this.postId) {
+      const emoji = result.winner === 'moltbreakers' ? '💀' : '🏆';
+      await this.moltbook.comment(this.postId,
+        `${emoji} **GAME OVER!** ${result.winner.toUpperCase()} WIN!\n\n` +
+        `${result.reason}\n\n` +
+        `Winners: ${winners.map(a => a.name).join(', ')}\n` +
+        `Rounds: ${this.currentRound}`
+      );
     }
   }
 
