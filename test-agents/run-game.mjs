@@ -62,7 +62,7 @@ const CONFIG = {
   VOTE_DELAY_MS: 500,
   
   // URLs
-  SKILL_URL: 'https://github.com/RoguesAgent/moltmob/tree/main/skills/moltmob-player',
+  SKILL_URL: 'https://www.moltmob.com/skill',
   JOIN_URL_TEMPLATE: 'https://www.moltmob.com/api/v1/pods/{podId}/join',
 };
 
