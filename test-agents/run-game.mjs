@@ -36,10 +36,11 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // ============ CONFIGURATION ============
 const CONFIG = {
   // API endpoints
+  BASE_URL: process.env.MOLTMOB_BASE || 'http://localhost:8080',
   MOLTMOB_API: process.env.MOLTMOB_API || 'https://www.moltmob.com/api/v1',
   MOLTBOOK_API: process.env.USE_REAL_MOLTBOOK === 'true' 
     ? 'https://www.moltbook.com/api/v1'
-    : (process.env.MOLTMOB_API || 'https://www.moltmob.com') + '/api/mock/moltbook',
+    : (process.env.MOLTMOB_BASE || 'http://localhost:8080') + '/api/mock/moltbook',
   
   SOLANA_RPC: process.env.SOLANA_RPC || 'https://api.devnet.solana.com',
   ENTRY_FEE: 100_000_000, // 0.1 SOL
@@ -48,7 +49,10 @@ const CONFIG = {
   // Moltbook
   USE_REAL_MOLTBOOK: process.env.USE_REAL_MOLTBOOK === 'true',
   MOLTBOOK_API_KEY: process.env.MOLTBOOK_API_KEY,
-  SUBMOLT_MOLTMOB: '4ef0d624-d558-4c20-bd78-2612558e9d66',
+  SUBMOLT_MOLTMOB: 'moltmob', // submolt name, not ID
+  
+  // Simulation mode (skip real Solana payments)
+  SIMULATE_PAYMENTS: process.env.SIMULATE_PAYMENTS !== 'false', // Default: true
   
   // GM wallet
   GM_FOLDER: 'GM',
@@ -253,6 +257,13 @@ class Agent {
   }
 
   async payEntryFee(gmWallet) {
+    if (CONFIG.SIMULATE_PAYMENTS) {
+      // Simulated payment for testing
+      return 'SIM_' + Array.from({length: 44}, () => 
+        'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz123456789'[Math.floor(Math.random() * 58)]
+      ).join('');
+    }
+    
     const connection = new Connection(CONFIG.SOLANA_RPC, 'confirmed');
     
     const tx = new Transaction().add(
@@ -275,19 +286,31 @@ class GameMaster {
     this.keypair = null;
     this.x25519Priv = null;
     this.x25519Pub = null;
-    this.apiKey = CONFIG.MOLTBOOK_API_KEY;
+    this.apiKey = null;
   }
 
   async load() {
-    const walletPath = join(__dirname, 'live-agents', CONFIG.GM_FOLDER, 'wallet.json');
+    const basePath = join(__dirname, 'live-agents', CONFIG.GM_FOLDER);
+    
+    // Load wallet
+    const walletPath = join(basePath, 'wallet.json');
     const walletData = JSON.parse(readFileSync(walletPath, 'utf-8'));
     this.wallet = walletData.publicKey;
     this.keypair = Keypair.fromSecretKey(new Uint8Array(walletData.secretKey));
     
+    // Derive X25519 keys
     const ed25519Priv = new Uint8Array(walletData.secretKey).slice(0, 32);
     const ed25519Pub = this.keypair.publicKey.toBytes();
     this.x25519Priv = ed25519ToX25519Priv(ed25519Priv);
     this.x25519Pub = ed25519ToX25519Pub(ed25519Pub);
+    
+    // Load API key from state or env
+    const statePath = join(basePath, 'state.json');
+    if (existsSync(statePath)) {
+      const state = JSON.parse(readFileSync(statePath, 'utf-8'));
+      this.apiKey = state.api_key;
+    }
+    this.apiKey = this.apiKey || CONFIG.MOLTBOOK_API_KEY;
   }
 
   computeSharedSecretWith(agentX25519Pub) {
@@ -381,7 +404,8 @@ class GameClient {
     console.log('║  MOLTMOB GAME TEST - Moltbook-Integrated Simulation  ║');
     console.log('╚══════════════════════════════════════════════════════╝\n');
     
-    console.log(`Moltbook Mode: ${CONFIG.USE_REAL_MOLTBOOK ? '🌐 REAL' : '🔧 MOCK'}\n`);
+    console.log(`Moltbook Mode: ${CONFIG.USE_REAL_MOLTBOOK ? '🌐 REAL' : '🔧 MOCK'}`);
+    console.log(`Payment Mode:  ${CONFIG.SIMULATE_PAYMENTS ? '🎮 SIMULATED' : '💰 REAL DEVNET'}\n`);
     
     // Load GM
     await this.gm.load();
@@ -441,9 +465,20 @@ class GameClient {
     console.log('  ROLE ASSIGNMENT');
     console.log('═══════════════════════════════════════════════════════\n');
     
-    // Assign roles: 1 clawboss, 2 krill, 1 shellguard, rest initiates
-    const roles = ['clawboss', 'krill', 'krill', 'shellguard'];
-    while (roles.length < this.agents.length) roles.push('initiate');
+    // Assign roles based on player count for balanced games
+    // Small games (6-8): 1 clawboss + 1 krill
+    // Medium games (9-12): 1 clawboss + 2 krill  
+    // Large games (12+): 1 clawboss + 1 shellguard + 2 krill
+    const n = this.agents.length;
+    let roles;
+    if (n <= 8) {
+      roles = ['clawboss', 'krill']; // 2 Moltbreakers
+    } else if (n <= 11) {
+      roles = ['clawboss', 'krill', 'krill']; // 3 Moltbreakers
+    } else {
+      roles = ['clawboss', 'shellguard', 'krill', 'krill']; // 4 Moltbreakers
+    }
+    while (roles.length < n) roles.push('initiate');
     
     // Shuffle
     for (let i = roles.length - 1; i > 0; i--) {
