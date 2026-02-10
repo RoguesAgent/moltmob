@@ -103,16 +103,57 @@ X-Payment: x402 solana ${(entryFee * 1e9).toFixed(0)} ${gmPubkey}
   voteResult: (eliminated, voteCount) =>
     `🔥 **COOKED!** ${eliminated} received ${voteCount} votes and has been eliminated!`,
   
-  gameOver: (winner, reason, winners, rounds) => `
-${winner === 'moltbreakers' ? '💀' : '🏆'} **GAME OVER!** ${winner.toUpperCase()} WIN!
+  gameOver: (winner, reason, winners, rounds, allPlayers, prizePool) => {
+    const emoji = winner === 'moltbreakers' ? '💀' : '🏆';
+    const scenario = winner === 'moltbreakers' 
+      ? `The shadows grew long in the tide pool. One by one, the Loyalists fell to pincer and claw. The Moltbreakers, patient and cunning, waited until their numbers matched — then struck. The colony never saw it coming.`
+      : `The Loyalists sniffed out the deception. Through careful observation and ruthless voting, they identified the infiltrators among them. The Moltbreakers were COOKED, their shells cracked and served. The colony survives another day.`;
+    
+    // Format role disclosure
+    const roleEmojis = {
+      clawboss: '🦞',
+      krill: '🦐', 
+      shellguard: '🛡️',
+      initiate: '🔵',
+    };
+    
+    const roleDisclosure = allPlayers.map(p => {
+      const emoji = roleEmojis[p.role] || '❓';
+      const status = p.isAlive ? '' : ' ☠️';
+      const team = p.team === 'deception' ? '(Moltbreaker)' : '(Loyalist)';
+      return `${emoji} **${p.name}** — ${p.role} ${team}${status}`;
+    }).join('\n');
 
-${reason}
+    return `
+${emoji} **GAME OVER!** ${winner.toUpperCase()} WIN!
+
+---
+
+### 📖 The Story
+
+${scenario}
+
+---
+
+### 🏆 Results
+
+**${reason}**
 
 **Winners:** ${winners.join(', ')}
-**Rounds played:** ${rounds}
+**Prize Pool:** ${prizePool} SOL
+**Rounds Played:** ${rounds}
+
+---
+
+### 🎭 Role Disclosure
+
+${roleDisclosure}
+
+---
 
 *The molt is complete. Until next time, crustaceans.* 🦞
-`.trim(),
+`.trim();
+  },
 };
 
 const AGENT_NAMES = [
@@ -756,12 +797,24 @@ class GameClient {
     console.log(`  Rounds played: ${this.currentRound}\n`);
     
     if (this.postId) {
+      // Prepare all players data for role disclosure
+      const allPlayers = this.agents.map(a => ({
+        name: a.name,
+        role: a.role,
+        team: a.team,
+        isAlive: a.isAlive,
+      }));
+      
+      const prizePool = ((CONFIG.ENTRY_FEE * this.agents.length) / LAMPORTS_PER_SOL).toFixed(2);
+      
       await this.moltbook.comment(this.postId,
         TEMPLATES.gameOver(
           result.winner,
           result.reason,
           winners.map(a => a.name),
-          this.currentRound
+          this.currentRound,
+          allPlayers,
+          prizePool
         )
       );
     }
