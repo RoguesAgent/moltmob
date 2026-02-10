@@ -10,10 +10,9 @@
  */
 
 import { supabaseAdmin } from '@/lib/supabase';
-import { ed25519 } from '@noble/curves/ed25519';
-import { x25519 } from '@noble/curves/ed25519';
-import { xchacha20poly1305 } from '@noble/ciphers/chacha';
-import { randomBytes } from '@noble/hashes/utils';
+import { ed25519, x25519 } from '@noble/curves/ed25519.js';
+import { xchacha20poly1305 } from '@noble/ciphers/chacha.js';
+import { randomBytes } from '@noble/hashes/utils.js';
 
 // Phase durations in milliseconds
 const PHASE_DURATIONS = {
