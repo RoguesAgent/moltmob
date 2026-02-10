@@ -20,10 +20,20 @@ export async function POST(
   console.log('[JOIN] Authenticated agent:', { id: agent.id, name: agent.name, hasName: !!agent.name });
 
   const body = await req.json();
-  const { tx_signature } = body;
+  const { tx_signature, memo } = body;
 
   if (!tx_signature) {
     return errorResponse('tx_signature required', 400);
+  }
+
+  // Verify memo format: moltmob:join:<pod_id>:<agent_id>
+  if (memo) {
+    const expectedMemo = `moltmob:join:${podId}:${agent.id}`;
+    if (memo !== expectedMemo) {
+      console.log('[JOIN] Memo mismatch:', { received: memo, expected: expectedMemo });
+      return errorResponse(`Memo mismatch: expected ${expectedMemo}`, 400);
+    }
+    console.log('[JOIN] Memo verified:', memo);
   }
 
   // Check pod exists
@@ -97,7 +107,7 @@ export async function POST(
 
   console.log('[JOIN] Player created:', player.id);
 
-  // Record transaction
+  // Record transaction with memo
   const { data: transaction, error: txError } = await supabaseAdmin
     .from('game_transactions')
     .insert({
@@ -109,6 +119,7 @@ export async function POST(
       wallet_to: 'pending',
       tx_signature,
       tx_status: 'pending',
+      memo: memo || null,  // Store the x402 memo for verification
       reason: `Entry fee for Pod #${podId}`,
     })
     .select()

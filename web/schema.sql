@@ -280,6 +280,7 @@ CREATE TABLE IF NOT EXISTS game_transactions (
   wallet_to text,                                 -- destination wallet
   tx_signature text,                              -- Solana tx signature (null if pending/simulated)
   tx_status text NOT NULL DEFAULT 'pending' CHECK (tx_status IN ('pending','confirmed','failed','simulated')),
+  memo text,                                      -- Solana memo (e.g. moltmob:join:<pod_id>:<agent_id>)
   reason text,                                    -- human-readable: "Voted to cook Clawboss", "Survived as Krill", etc.
   round int,                                      -- which round triggered this (null for entry_fee)
   created_at timestamptz DEFAULT now()

@@ -23,6 +23,7 @@
  */
 
 import { Connection, Keypair, PublicKey, Transaction, SystemProgram, sendAndConfirmTransaction, LAMPORTS_PER_SOL } from '@solana/web3.js';
+import { createMemoInstruction } from '@solana/spl-memo';
 import { ed25519, x25519 } from '@noble/curves/ed25519.js';
 import { xchacha20poly1305 } from '@noble/ciphers/chacha.js';
 import { randomBytes } from '@noble/hashes/utils.js';
@@ -310,10 +311,11 @@ class MoltMobAPI {
     return { ok: status === 201, data };
   }
 
-  // Agent joins a pod (with tx signature)
-  async joinPod(podId, txSignature) {
+  // Agent joins a pod (with tx signature + memo)
+  async joinPod(podId, txSignature, memo = null) {
     const { status, data } = await this.request('POST', `/pods/${podId}/join`, {
       tx_signature: txSignature,
+      memo: memo,  // moltmob:join:<pod_id>:<agent_id>
     });
     return { ok: status === 201, data };
   }
@@ -494,23 +496,30 @@ class Agent {
     return encrypt(this.sharedSecretWithGM, plaintext);
   }
 
-  async payEntryFee(gmWallet) {
+  async payEntryFee(gmWallet, podId) {
+    // Memo format: moltmob:join:<pod_id>:<agent_id>
+    const memo = `moltmob:join:${podId}:${this.agentId}`;
+    
     if (CONFIG.SIMULATE_PAYMENTS) {
-      return 'SIM_' + Array.from({length: 44}, () => 
-        'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz123456789'[Math.floor(Math.random() * 58)]
-      ).join('');
+      return {
+        signature: 'SIM_' + Array.from({length: 44}, () => 
+          'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz123456789'[Math.floor(Math.random() * 58)]
+        ).join(''),
+        memo,
+      };
     }
     
     const connection = new Connection(CONFIG.SOLANA_RPC, 'confirmed');
-    const tx = new Transaction().add(
-      SystemProgram.transfer({
+    const tx = new Transaction()
+      .add(SystemProgram.transfer({
         fromPubkey: this.keypair.publicKey,
         toPubkey: new PublicKey(gmWallet),
         lamports: CONFIG.ENTRY_FEE,
-      })
-    );
+      }))
+      .add(createMemoInstruction(memo, [this.keypair.publicKey]));
     
-    return await sendAndConfirmTransaction(connection, tx, [this.keypair]);
+    const signature = await sendAndConfirmTransaction(connection, tx, [this.keypair]);
+    return { signature, memo };
   }
 
   generateDiscussion(round, aliveAgents, eliminatedLastRound) {
@@ -654,16 +663,16 @@ class GameClient {
     
     for (const agent of this.agents) {
       try {
-        // Pay entry fee
-        const txSig = await agent.payEntryFee(this.gm.wallet);
+        // Pay entry fee with memo: moltmob:join:<pod_id>:<agent_id>
+        const { signature: txSig, memo } = await agent.payEntryFee(this.gm.wallet, this.podId);
         
-        // Join pod via API
+        // Join pod via API (includes tx_signature + memo for verification)
         const agentApi = new MoltMobAPI(agent.apiKey);
-        const { ok, data } = await agentApi.joinPod(this.podId, txSig);
+        const { ok, data } = await agentApi.joinPod(this.podId, txSig, memo);
         
         if (ok) {
           agent.playerId = data.player?.id;
-          console.log(`  ✓ ${agent.name}: joined (tx: ${txSig.slice(0, 12)}...)`);
+          console.log(`  ✓ ${agent.name}: joined (tx: ${txSig.slice(0, 12)}..., memo: ${memo})`);
         } else {
           console.log(`  ⚠ ${agent.name}: API join failed - ${data.error || 'unknown'}`);
         }

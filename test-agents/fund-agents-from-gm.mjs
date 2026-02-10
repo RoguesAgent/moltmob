@@ -27,16 +27,26 @@ const FUND_AMOUNT = 0.2 * LAMPORTS_PER_SOL;
 async function main() {
   console.log('🦀 Funding Test Agents from GM Wallet\n');
 
-  // GM wallet secret key from environment
+  // GM wallet secret key from environment or wallet file
+  let gmKeypair;
   const secretKeyBase64 = process.env.GM_SECRET_KEY;
-  if (!secretKeyBase64) {
-    console.error('❌ Set GM_SECRET_KEY environment variable');
-    console.error('   Example: GM_SECRET_KEY="base64_encoded_key" node fund-agents-from-gm.mjs');
-    process.exit(1);
+  
+  if (secretKeyBase64) {
+    const secretKey = Buffer.from(secretKeyBase64, 'base64');
+    gmKeypair = Keypair.fromSecretKey(new Uint8Array(secretKey));
+  } else {
+    // Try reading from wallet.json
+    try {
+      const walletPath = join(__dirname, 'live-agents', 'GM', 'wallet.json');
+      const walletData = JSON.parse(readFileSync(walletPath, 'utf-8'));
+      gmKeypair = Keypair.fromSecretKey(new Uint8Array(walletData.secretKey));
+      console.log('✓ Loaded GM wallet from wallet.json');
+    } catch (err) {
+      console.error('❌ Set GM_SECRET_KEY environment variable or ensure live-agents/GM/wallet.json exists');
+      console.error('   Example: GM_SECRET_KEY="base64_encoded_key" node fund-agents-from-gm.mjs');
+      process.exit(1);
+    }
   }
-
-  const secretKey = Buffer.from(secretKeyBase64, 'base64');
-  const gmKeypair = Keypair.fromSecretKey(new Uint8Array(secretKey));
   
   console.log('GM Wallet:', gmKeypair.publicKey.toBase58());
 
