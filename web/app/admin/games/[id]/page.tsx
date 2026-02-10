@@ -39,6 +39,7 @@ interface Transaction {
   from: string;
   to: string;
   timestamp: string;
+  tx_signature?: string;
 }
 
 interface MoltbookPost {
@@ -261,6 +262,7 @@ export default function GameDetailPage() {
                 <th className="text-left p-4">From</th>
                 <th className="text-left p-4">To</th>
                 <th className="text-left p-4">Time</th>
+                <th className="text-left p-4">Tx</th>
               </tr>
             </thead>
             <tbody>
@@ -268,9 +270,23 @@ export default function GameDetailPage() {
                 <tr key={t.id} className="border-t border-gray-700">
                   <td className="p-4 capitalize">{t.type}</td>
                   <td className="p-4 text-emerald-400">{t.amount} SOL</td>
-                  <td className="p-4 text-gray-400 text-sm font-mono">{t.from.slice(0, 6)}...</td>
-                  <td className="p-4 text-gray-400 text-sm font-mono">{t.to.slice(0, 6)}...</td>
+                  <td className="p-4 text-gray-400 text-sm font-mono">{t.from?.slice(0, 6) || '—'}...</td>
+                  <td className="p-4 text-gray-400 text-sm font-mono">{t.to?.slice(0, 6) || '—'}...</td>
                   <td className="p-4 text-gray-500 text-sm">{new Date(t.timestamp).toLocaleString()}</td>
+                  <td className="p-4">
+                    {t.tx_signature ? (
+                      <a
+                        href={`https://solscan.io/tx/${t.tx_signature}?cluster=devnet`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-blue-400 hover:text-blue-300 text-sm font-mono"
+                      >
+                        {t.tx_signature.slice(0, 8)}...
+                      </a>
+                    ) : (
+                      <span className="text-gray-600 text-sm">—</span>
+                    )}
+                  </td>
                 </tr>
               ))}
             </tbody>

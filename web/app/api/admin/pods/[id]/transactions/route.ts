@@ -40,6 +40,7 @@ export async function GET(
       timestamp: t.created_at,
       status: t.tx_status,
       reason: t.reason,
+      tx_signature: t.tx_signature || null,
     }));
 
     return NextResponse.json(mapped);
