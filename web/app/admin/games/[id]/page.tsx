@@ -30,7 +30,29 @@ interface Event {
   id: string;
   type: string;
   message: string;
+  summary?: string;
   timestamp: string;
+  round?: number;
+  phase?: string;
+  details?: {
+    agent_id?: string;
+    agent_name?: string;
+    player?: string;
+    role?: string;
+    target?: string;
+    action?: string;
+    vote_target?: string;
+    eliminated?: string;
+    method?: string;
+    phase?: string;
+    round?: number;
+    winner_side?: string;
+    alive_players?: string[];
+    moltbreakers_remaining?: number;
+    loyalists_remaining?: number;
+    payload?: any;
+    [key: string]: any;
+  };
 }
 
 interface Transaction {
@@ -273,16 +295,159 @@ export default function GameDetailPage() {
 
       {activeTab === 'events' && (
         <div className="space-y-3">
-          {events.map(e => (
-            <div key={e.id} className="bg-gray-800 rounded-lg p-4 flex items-start gap-4">
-              <div className="w-2 h-2 rounded-full bg-emerald-400 mt-2"></div>
-              <div className="flex-1">
-                <div className="font-medium">{e.type}</div>
-                <div className="text-gray-400">{e.message}</div>
+          {events.map(e => {
+            // Event type styling
+            const eventConfig: Record<string, { icon: string; color: string; bgColor: string }> = {
+              roles_assigned: { icon: '🎭', color: 'text-purple-400', bgColor: 'bg-purple-500/20' },
+              phase_change: { icon: '🔄', color: 'text-blue-400', bgColor: 'bg-blue-500/20' },
+              elimination: { icon: '☠️', color: 'text-red-400', bgColor: 'bg-red-500/20' },
+              message_decrypted: { icon: '🔐', color: 'text-yellow-400', bgColor: 'bg-yellow-500/20' },
+              game_end: { icon: '🏆', color: 'text-emerald-400', bgColor: 'bg-emerald-500/20' },
+              player_joined: { icon: '👋', color: 'text-cyan-400', bgColor: 'bg-cyan-500/20' },
+              vote_result: { icon: '🗳️', color: 'text-orange-400', bgColor: 'bg-orange-500/20' },
+              night_action: { icon: '🌙', color: 'text-indigo-400', bgColor: 'bg-indigo-500/20' },
+            };
+            const config = eventConfig[e.type] || { icon: '📌', color: 'text-gray-400', bgColor: 'bg-gray-500/20' };
+            
+            // Format event details based on type
+            const renderDetails = () => {
+              const d = e.details || {};
+              switch (e.type) {
+                case 'roles_assigned':
+                  const roleEmoji: Record<string, string> = { clawboss: '🦞', krill: '🦐', shellguard: '🛡️', initiate: '🔵' };
+                  return (
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-white">{d.agent_name || d.player || 'Unknown'}</span>
+                      <span className="text-gray-500">→</span>
+                      <span className={`px-2 py-0.5 rounded text-sm ${
+                        d.role === 'clawboss' || d.role === 'krill' ? 'bg-red-600' : 'bg-blue-600'
+                      }`}>
+                        {roleEmoji[d.role] || '❓'} {d.role}
+                      </span>
+                    </div>
+                  );
+                
+                case 'phase_change':
+                  const phaseEmoji: Record<string, string> = { night: '🌙', day: '☀️', vote: '🗳️', ended: '🏁', lobby: '🚪' };
+                  return (
+                    <div className="flex items-center gap-2">
+                      <span className="text-gray-400">Phase →</span>
+                      <span className="px-2 py-0.5 rounded bg-blue-600 text-sm">
+                        {phaseEmoji[d.phase] || '🔄'} {d.phase}
+                      </span>
+                      {d.round !== undefined && (
+                        <span className="text-gray-500 text-sm">(Round {d.round})</span>
+                      )}
+                    </div>
+                  );
+                
+                case 'elimination':
+                  return (
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium text-red-400">{d.eliminated || d.player || 'Unknown'}</span>
+                      <span className="text-gray-500">was</span>
+                      <span className={`px-2 py-0.5 rounded text-sm ${
+                        d.method === 'pinched' ? 'bg-purple-600' : 'bg-orange-600'
+                      }`}>
+                        {d.method === 'pinched' ? '🦞 PINCHED' : '🔥 COOKED'}
+                      </span>
+                      {d.role && (
+                        <span className="text-gray-400 text-sm">(was {d.role})</span>
+                      )}
+                    </div>
+                  );
+                
+                case 'message_decrypted':
+                  const payload = d.payload || d;
+                  return (
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2">
+                        <span className="font-medium text-white">{d.agent_name || payload.from || 'Unknown'}</span>
+                        <span className="text-gray-500">sent</span>
+                        <span className={`px-2 py-0.5 rounded text-xs ${
+                          payload.type === 'vote' ? 'bg-orange-600' : 'bg-indigo-600'
+                        }`}>
+                          {payload.type === 'vote' ? '🗳️ VOTE' : '🌙 NIGHT ACTION'}
+                        </span>
+                      </div>
+                      {payload.target && (
+                        <div className="text-sm text-gray-400 pl-4">
+                          Target: <span className="text-white">{payload.target}</span>
+                          {payload.action && <span className="text-gray-500"> ({payload.action})</span>}
+                        </div>
+                      )}
+                    </div>
+                  );
+                
+                case 'game_end':
+                  return (
+                    <div className="flex items-center gap-2">
+                      <span className={`px-3 py-1 rounded font-medium ${
+                        d.winner_side === 'pod' ? 'bg-blue-600' : 'bg-red-600'
+                      }`}>
+                        {d.winner_side === 'pod' ? '🏆 LOYALISTS WIN' : '💀 MOLTBREAKERS WIN'}
+                      </span>
+                      {d.alive_players && (
+                        <span className="text-gray-400 text-sm">
+                          ({d.alive_players.length} survivors)
+                        </span>
+                      )}
+                    </div>
+                  );
+                
+                case 'vote_result':
+                  return (
+                    <div className="flex items-center gap-2">
+                      <span className="text-gray-400">Target:</span>
+                      <span className="font-medium text-orange-400">{d.target || d.eliminated}</span>
+                      {d.votes !== undefined && (
+                        <span className="text-gray-500 text-sm">({d.votes} votes)</span>
+                      )}
+                    </div>
+                  );
+                
+                default:
+                  // Show raw details for unknown event types
+                  if (Object.keys(d).length > 0) {
+                    return (
+                      <pre className="text-xs text-gray-400 bg-gray-900 p-2 rounded overflow-x-auto">
+                        {JSON.stringify(d, null, 2)}
+                      </pre>
+                    );
+                  }
+                  return <span className="text-gray-500">{e.message || e.summary || 'No details'}</span>;
+              }
+            };
+
+            return (
+              <div key={e.id} className={`rounded-lg p-4 ${config.bgColor} border border-gray-700`}>
+                <div className="flex items-start gap-4">
+                  <div className="text-2xl">{config.icon}</div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className={`font-medium ${config.color}`}>{e.type}</span>
+                      {e.round !== undefined && (
+                        <span className="text-gray-500 text-xs">R{e.round}</span>
+                      )}
+                      {e.phase && (
+                        <span className="text-gray-600 text-xs">• {e.phase}</span>
+                      )}
+                    </div>
+                    <div className="text-sm">{renderDetails()}</div>
+                  </div>
+                  <div className="text-gray-500 text-sm whitespace-nowrap">
+                    {new Date(e.timestamp).toLocaleTimeString()}
+                  </div>
+                </div>
               </div>
-              <div className="text-gray-500 text-sm">{new Date(e.timestamp).toLocaleString()}</div>
+            );
+          })}
+          {events.length === 0 && (
+            <div className="text-center py-12 text-gray-500">
+              <span className="text-4xl block mb-4">📭</span>
+              <p>No events recorded yet</p>
             </div>
-          ))}
+          )}
         </div>
       )}
 
