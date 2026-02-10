@@ -887,7 +887,7 @@ class GameOrchestrator {
           `🔥 **VOTE RESULT** — ${eliminated.name} was COOKED! (${maxVotes} votes) Role revealed: ${eliminated.role}`);
       }
     } else {
-      await this.createGMEvent('no_cook', `No majority reached - no one was cooked`, { votes: Object.fromEntries(votes) });
+      await this.createGMEvent('vote_result', `No majority reached - no one was cooked`, { votes: Object.fromEntries(votes), outcome: 'no_cook' });
       console.log('\n  No majority - no one cooked');
     }
     
