@@ -4,11 +4,27 @@
  * 
  * Runs a complete game simulation with:
  * - Full Supabase database integration (game_pods, game_players, gm_events, game_transactions, game_actions)
- * - Mock Moltbook API integration (posts during day phase)
+ * - Moltbook API integration (posts during day phase) - supports both mock and real
  * - xChaCha20-Poly1305 encrypted role delivery
  * - Real wallet-based key exchange
  * 
- * Usage: node game-orchestrator-db.mjs
+ * USAGE:
+ * 
+ * 1. Mock Moltbook (local testing):
+ *    export $(grep -v '^#' ../web/.env.local | grep -v '^$' | xargs)
+ *    node game-orchestrator-db.mjs
+ * 
+ * 2. Real Moltbook (production):
+ *    export $(grep -v '^#' ../web/.env.local | grep -v '^$' | xargs)
+ *    export USE_REAL_MOLTBOOK=true
+ *    export MOLTBOOK_API_KEY=your_roguesagent_moltbook_api_key
+ *    node game-orchestrator-db.mjs
+ * 
+ * ENVIRONMENT VARIABLES:
+ *   SUPABASE_SERVICE_ROLE_KEY  - Required for database access
+ *   USE_REAL_MOLTBOOK          - Set to 'true' for real Moltbook (default: false/mock)
+ *   MOLTBOOK_API_KEY           - RoguesAgent's Moltbook API key (required for real Moltbook)
+ *   MOLTMOB_API_URL            - Mock API URL (default: http://localhost:3000)
  */
 
 import { Connection, PublicKey, Keypair, LAMPORTS_PER_SOL } from '@solana/web3.js';
@@ -29,7 +45,19 @@ const CONFIG = {
   MAX_PLAYERS: 12,
   SUPABASE_URL: process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.SUPABASE_URL || 'https://tecywteuhsicdeuygznl.supabase.co',
   get SUPABASE_SERVICE_KEY() { return process.env.SUPABASE_SERVICE_ROLE_KEY; },
-  MOLTMOB_API_URL: process.env.MOLTMOB_API_URL || 'http://localhost:3000',
+  
+  // Moltbook Configuration
+  // USE_REAL_MOLTBOOK=true to post to real Moltbook, false for mock/local
+  USE_REAL_MOLTBOOK: process.env.USE_REAL_MOLTBOOK === 'true',
+  MOLTBOOK_API_URL: process.env.USE_REAL_MOLTBOOK === 'true' 
+    ? 'https://www.moltbook.com/api/v1'
+    : (process.env.MOLTMOB_API_URL || 'http://localhost:3000') + '/api/mock/moltbook',
+  // Real Moltbook API key (RoguesAgent's key for posting game updates)
+  get MOLTBOOK_API_KEY() { return process.env.MOLTBOOK_API_KEY || process.env.MLBT_API_KEY; },
+  // Submolt IDs
+  SUBMOLT_MOLTMOB: '4ef0d624-d558-4c20-bd78-2612558e9d66', // Real moltmob submolt
+  SUBMOLT_GENERAL: '29beb7ee-ca7d-4290-9c2f-09926264866f', // General submolt
+  
   PHASE_DURATION: { LOBBY: 2000, NIGHT: 3000, DAY: 4000, VOTE: 3000, RESOLUTION: 2000 },
   LOG_FILE: './logs/game-db-log.csv',
 };
@@ -272,6 +300,12 @@ class GameOrchestrator {
     logBanner("MOLTMOB GAME ORCHESTRATOR (DB INTEGRATED)");
     console.log("Initializing game...");
     
+    // Log Moltbook configuration
+    console.log(`Moltbook Mode: ${CONFIG.USE_REAL_MOLTBOOK ? '🌐 REAL (moltbook.com)' : '🔧 MOCK (local)'}`);
+    if (CONFIG.USE_REAL_MOLTBOOK && !CONFIG.MOLTBOOK_API_KEY) {
+      console.warn('⚠️  Warning: USE_REAL_MOLTBOOK=true but no MOLTBOOK_API_KEY set');
+    }
+    
     // Initialize Supabase client
     if (!CONFIG.SUPABASE_SERVICE_KEY) {
       throw new Error('SUPABASE_SERVICE_ROLE_KEY environment variable not set');
@@ -385,20 +419,43 @@ class GameOrchestrator {
   }
 
   async postToMoltbook(title, content, submolt = 'moltmob') {
-    // Get first agent's API key for posting
-    const posterAgent = this.agents[0];
+    // For real Moltbook: use RoguesAgent API key (GM posts game updates)
+    // For mock: use test agent API key
+    const apiKey = CONFIG.USE_REAL_MOLTBOOK ? CONFIG.MOLTBOOK_API_KEY : this.agents[0]?.apiKey;
+    
+    if (!apiKey) {
+      console.log('  [Moltbook] No API key available for posting');
+      return null;
+    }
+    
+    // Determine submolt ID
+    const submoltId = submolt === 'moltmob' ? CONFIG.SUBMOLT_MOLTMOB : CONFIG.SUBMOLT_GENERAL;
+    
     try {
-      const res = await fetch(`${CONFIG.MOLTMOB_API_URL}/api/mock/moltbook/posts`, {
+      const url = `${CONFIG.MOLTBOOK_API_URL}/posts`;
+      console.log(`  [Moltbook] Posting to ${CONFIG.USE_REAL_MOLTBOOK ? 'REAL' : 'mock'}: ${url}`);
+      
+      const res = await fetch(url, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${posterAgent.apiKey}`,
+          'Authorization': `Bearer ${apiKey}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ title, content, submolt_id: submolt })
+        body: JSON.stringify({ 
+          title, 
+          content, 
+          submolt_id: submoltId 
+        })
       });
+      
       if (res.ok) {
         const data = await res.json();
-        return data.post?.id;
+        const postId = data.post?.id || data.id;
+        console.log(`  [Moltbook] ✓ Post created: ${postId}`);
+        return postId;
+      } else {
+        const errorText = await res.text();
+        console.log(`  [Moltbook] Post failed (${res.status}): ${errorText.slice(0, 100)}`);
       }
     } catch (err) {
       console.log(`  [Moltbook] Could not post (API may be offline): ${err.message}`);
@@ -406,19 +463,38 @@ class GameOrchestrator {
     return null;
   }
 
-  async commentOnMoltbook(postId, content) {
-    const posterAgent = this.agents[0];
+  async commentOnMoltbook(postId, content, agentName = null) {
+    // For real Moltbook: use RoguesAgent API key (GM posts all game updates)
+    // For mock: use test agent API key  
+    const apiKey = CONFIG.USE_REAL_MOLTBOOK ? CONFIG.MOLTBOOK_API_KEY : this.agents[0]?.apiKey;
+    
+    if (!apiKey || !postId) return;
+    
+    // If agent name provided, prefix the comment (for real Moltbook where GM posts on behalf of agents)
+    const finalContent = agentName && CONFIG.USE_REAL_MOLTBOOK 
+      ? `**${agentName}**: ${content}`
+      : content;
+    
     try {
-      await fetch(`${CONFIG.MOLTMOB_API_URL}/api/mock/moltbook/posts/${postId}/comments`, {
+      const url = `${CONFIG.MOLTBOOK_API_URL}/posts/${postId}/comments`;
+      const res = await fetch(url, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${posterAgent.apiKey}`,
+          'Authorization': `Bearer ${apiKey}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({ content })
+        body: JSON.stringify({ content: finalContent })
       });
+      
+      if (!res.ok && CONFIG.USE_REAL_MOLTBOOK) {
+        const errorText = await res.text();
+        console.log(`  [Moltbook] Comment failed: ${errorText.slice(0, 100)}`);
+      }
     } catch (err) {
-      // Silently fail - Moltbook is optional
+      // Silently fail for mock, log for real
+      if (CONFIG.USE_REAL_MOLTBOOK) {
+        console.log(`  [Moltbook] Comment error: ${err.message}`);
+      }
     }
   }
 
@@ -631,7 +707,8 @@ class GameOrchestrator {
       
       if (this.moltbookPostId) {
         await this.commentOnMoltbook(this.moltbookPostId, 
-          `🌅 **Day ${this.round}** — ${pinched.name} was found pinched! Their shell lies empty. (Role: ${pinched.role})`);
+          `🌅 **Day ${this.round}** — ${pinched.name} was found pinched! Their shell lies empty. (Role: ${pinched.role})`
+        );
       }
     }
     
@@ -653,9 +730,13 @@ class GameOrchestrator {
           }
         }
         
-        // Post to Moltbook
+        // Post to Moltbook (agent name passed for attribution)
         if (this.moltbookPostId) {
-          await this.commentOnMoltbook(this.moltbookPostId, `**${agent.name}**: ${message}`);
+          await this.commentOnMoltbook(this.moltbookPostId, message, agent.name);
+          // Small delay between posts to respect rate limits
+          if (CONFIG.USE_REAL_MOLTBOOK) {
+            await this.sleep(1000);
+          }
         }
       }
     }

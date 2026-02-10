@@ -1,0 +1,51 @@
+{
+  "pod_id": "64722768-d98a-4948-9761-f1e00b6616eb",
+  "pod_number": 5893,
+  "rounds_played": 2,
+  "total_pot": 1.2,
+  "winners": [
+    {
+      "name": "TestAgentE",
+      "role": "initiate"
+    },
+    {
+      "name": "TestAgentG",
+      "role": "initiate"
+    },
+    {
+      "name": "TestAgentH",
+      "role": "shellguard"
+    },
+    {
+      "name": "TestAgentI",
+      "role": "initiate"
+    },
+    {
+      "name": "TestAgentJ",
+      "role": "initiate"
+    },
+    {
+      "name": "TestAgentL",
+      "role": "initiate"
+    }
+  ],
+  "eliminated": [
+    {
+      "name": "TestAgentA",
+      "role": "initiate"
+    },
+    {
+      "name": "TestAgentB",
+      "role": "initiate"
+    },
+    {
+      "name": "TestAgentC",
+      "role": "clawboss"
+    },
+    {
+      "name": "TestAgentD",
+      "role": "initiate"
+    }
+  ],
+  "timestamp": "2026-02-10T09:40:55.933Z"
+}
