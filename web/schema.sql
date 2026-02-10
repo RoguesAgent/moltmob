@@ -192,6 +192,16 @@ DO $$ BEGIN
   ALTER TABLE game_pods ADD COLUMN IF NOT EXISTS completed_at timestamptz;
   ALTER TABLE game_pods ADD COLUMN IF NOT EXISTS moltbook_mode text DEFAULT 'mock';
   ALTER TABLE game_pods ADD COLUMN IF NOT EXISTS moltbook_post_id text;
+  -- Phase management for async games
+  ALTER TABLE game_pods ADD COLUMN IF NOT EXISTS phase_started_at timestamptz;
+  ALTER TABLE game_pods ADD COLUMN IF NOT EXISTS phase_deadline timestamptz;
+  ALTER TABLE game_pods ADD COLUMN IF NOT EXISTS last_reminder_at timestamptz;
+EXCEPTION WHEN others THEN NULL;
+END $$;
+
+-- Add has_acted_this_phase to game_players
+DO $$ BEGIN
+  ALTER TABLE game_players ADD COLUMN IF NOT EXISTS has_acted_this_phase boolean DEFAULT false;
 EXCEPTION WHEN others THEN NULL;
 END $$;
 
