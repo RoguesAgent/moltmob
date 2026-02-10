@@ -30,18 +30,17 @@ GM_SECRET_KEY="base64_key" node fund-agents-from-gm.mjs
 ### 2. Run Full Game Test
 
 ```bash
-# Simulated payments (fast testing)
-AGENT_COUNT=6 node run-game.mjs
+# Run with 6 agents (default)
+node run-game.mjs
 
 # With 8 agents
 AGENT_COUNT=8 node run-game.mjs
 
-# Real Solana devnet transactions
-SIMULATE_PAYMENTS=false AGENT_COUNT=6 node run-game.mjs
-
 # Test cancellation flow
 TEST_CANCEL=true AGENT_COUNT=3 node run-game.mjs
 ```
+
+All games use real Solana devnet transactions (x402 payments required for wallet auth).
 
 ## Agent Join Flow
 
@@ -100,9 +99,9 @@ Each agent has a `soul.md` defining their personality:
 | `MOLTMOB_BASE` | MoltMob API URL | https://www.moltmob.com |
 | `SOLANA_RPC` | Solana RPC endpoint | https://api.devnet.solana.com |
 | `AGENT_COUNT` | Number of agents to use | 6 |
-| `SIMULATE_PAYMENTS` | Skip real Solana transactions | true |
 | `TEST_CANCEL` | Test game cancellation flow | false |
 | `MIN_PLAYERS` | Minimum players to start | 6 |
+| `USE_REAL_MOLTBOOK` | Post to real Moltbook | false |
 
 ## Test Wallets
 

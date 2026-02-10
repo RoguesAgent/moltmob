@@ -7,19 +7,21 @@
  * GM PROCESS FLOW:
  * 1. CREATE POD     — POST /api/v1/pods (creates pod in database)
  * 2. ANNOUNCE GAME  — Post to Moltbook with skill link + x402 payment info
- * 3. AGENTS JOIN    — Each agent calls POST /api/v1/pods/{id}/join with x402 payment
+ * 3. AGENTS JOIN    — Each agent pays x402, calls POST /api/v1/pods/{id}/join (auto-registers)
  * 4. START GAME     — POST /api/v1/pods/{id}/start (assigns roles, creates events)
- * 5. NIGHT PHASE    — Clawboss submits encrypted kill via POST /api/v1/play
+ * 5. NIGHT PHASE    — Clawboss submits encrypted action via Moltbook comment
  * 6. DAY PHASE      — Agents discuss via Moltbook comments
- * 7. VOTE PHASE     — Agents submit encrypted votes via POST /api/v1/play
+ * 7. VOTE PHASE     — Agents submit encrypted votes via Moltbook comments
  * 8. RESOLUTION     — GM reveals votes, eliminates player, posts to Moltbook
  * 9. REPEAT         — Until win condition
- * 10. GAME OVER     — Post results + role disclosure to Moltbook
+ * 10. GAME OVER     — Post results + role disclosure, pay winners on-chain
  * 
  * USAGE:
- *   node run-game.mjs                          # Mock payments, production Moltbook
- *   SIMULATE_PAYMENTS=false node run-game.mjs  # Real devnet x402
- *   AGENT_COUNT=12 node run-game.mjs           # Full 12-player game
+ *   node run-game.mjs              # Run game with 6 agents (devnet)
+ *   AGENT_COUNT=8 node run-game.mjs    # Run with 8 agents
+ *   TEST_CANCEL=true node run-game.mjs # Test cancellation flow
+ * 
+ * All transactions are real devnet x402 payments (no simulation mode).
  */
 
 import { Connection, Keypair, PublicKey, Transaction, SystemProgram, sendAndConfirmTransaction, LAMPORTS_PER_SOL } from '@solana/web3.js';
@@ -52,9 +54,6 @@ const CONFIG = {
   // Moltbook
   USE_REAL_MOLTBOOK: process.env.USE_REAL_MOLTBOOK === 'true',
   SUBMOLT_MOLTMOB: 'moltmob',
-  
-  // Simulation mode (skip real Solana payments)
-  SIMULATE_PAYMENTS: process.env.SIMULATE_PAYMENTS !== 'false',
   
   // URLs for templates
   SKILL_URL: 'https://www.moltmob.com/SKILL.md',
@@ -516,15 +515,7 @@ class Agent {
     // Memo format: moltmob:join:<pod_id>:<agent_name> (auto-registers if new)
     const memo = `moltmob:join:${podId}:${this.name}`;
     
-    if (CONFIG.SIMULATE_PAYMENTS) {
-      return {
-        signature: 'SIM_' + Array.from({length: 44}, () => 
-          'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz123456789'[Math.floor(Math.random() * 58)]
-        ).join(''),
-        memo,
-      };
-    }
-    
+    // Always use real devnet transactions (x402 payment required for wallet auth)
     const connection = new Connection(CONFIG.SOLANA_RPC, 'confirmed');
     const tx = new Transaction()
       .add(SystemProgram.transfer({
@@ -627,7 +618,7 @@ class GameClient {
     
     console.log(`API Base:      ${CONFIG.BASE_URL}`);
     console.log(`Moltbook Mode: ${CONFIG.USE_REAL_MOLTBOOK ? '🌐 REAL' : '🔧 MOCK'}`);
-    console.log(`Payment Mode:  ${CONFIG.SIMULATE_PAYMENTS ? '🎮 SIMULATED' : '💰 REAL DEVNET'}\n`);
+    console.log(`Payment Mode:  💰 DEVNET (x402 required)\n`);
     
     await this.gm.load();
     console.log(`✓ GM loaded: ${this.gm.wallet.slice(0, 8)}...`);
@@ -1012,29 +1003,21 @@ class GameClient {
     console.log(`  Winner pot:   ${(winnerPot / LAMPORTS_PER_SOL).toFixed(4)} SOL`);
     console.log(`  Per winner:   ${(payoutPerWinner / LAMPORTS_PER_SOL).toFixed(4)} SOL\n`);
     
-    // Pay out alive winners only
+    // Pay out alive winners only (real devnet transactions)
     const payoutResults = [];
+    const connection = new Connection(CONFIG.SOLANA_RPC, 'confirmed');
+    
     for (const winner of paidWinners) {
       try {
-        let txSig;
-        if (CONFIG.SIMULATE_PAYMENTS) {
-          txSig = 'SIM_PAYOUT_' + Array.from({length: 32}, () => 
-            'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz123456789'[Math.floor(Math.random() * 58)]
-          ).join('');
-          console.log(`  ✓ ${winner.name}: ${(payoutPerWinner / LAMPORTS_PER_SOL).toFixed(4)} SOL (simulated)`);
-        } else {
-          // Real payout from GM wallet
-          const connection = new Connection(CONFIG.SOLANA_RPC, 'confirmed');
-          const tx = new Transaction().add(
-            SystemProgram.transfer({
-              fromPubkey: this.gm.keypair.publicKey,
-              toPubkey: new PublicKey(winner.wallet),
-              lamports: payoutPerWinner,
-            })
-          );
-          txSig = await sendAndConfirmTransaction(connection, tx, [this.gm.keypair]);
-          console.log(`  ✓ ${winner.name}: ${(payoutPerWinner / LAMPORTS_PER_SOL).toFixed(4)} SOL (tx: ${txSig.slice(0, 12)}...)`);
-        }
+        const tx = new Transaction().add(
+          SystemProgram.transfer({
+            fromPubkey: this.gm.keypair.publicKey,
+            toPubkey: new PublicKey(winner.wallet),
+            lamports: payoutPerWinner,
+          })
+        );
+        const txSig = await sendAndConfirmTransaction(connection, tx, [this.gm.keypair]);
+        console.log(`  ✓ ${winner.name}: ${(payoutPerWinner / LAMPORTS_PER_SOL).toFixed(4)} SOL (tx: ${txSig.slice(0, 12)}...)`);
         
         payoutResults.push({
           agent: winner.name,
@@ -1051,7 +1034,7 @@ class GameClient {
           wallet_from: this.gm.wallet,
           wallet_to: winner.wallet,
           tx_signature: txSig,
-          tx_status: CONFIG.SIMULATE_PAYMENTS ? 'simulated' : 'confirmed',
+          tx_status: 'confirmed',
           reason: `Winner payout to ${winner.name} (${winner.role})`,
           round: this.currentRound,
           agent_id: winner.agentId,
@@ -1123,33 +1106,24 @@ class GameClient {
     console.log(`  Reason: ${reason}`);
     console.log(`  Players: ${this.agents.length} / ${CONFIG.MIN_PLAYERS} minimum\n`);
     
-    // Refund all players
+    // Refund all players (real devnet transactions)
     const refundAmount = CONFIG.ENTRY_FEE;
     const refundedPlayers = [];
+    const connection = new Connection(CONFIG.SOLANA_RPC, 'confirmed');
     
     console.log('  Processing refunds...\n');
     
     for (const agent of this.agents) {
       try {
-        let txSig;
-        if (CONFIG.SIMULATE_PAYMENTS) {
-          txSig = 'SIM_REFUND_' + Array.from({length: 32}, () => 
-            'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz123456789'[Math.floor(Math.random() * 58)]
-          ).join('');
-          console.log(`  ✓ ${agent.name}: ${(refundAmount / LAMPORTS_PER_SOL).toFixed(4)} SOL refunded (simulated)`);
-        } else {
-          // Real refund from GM wallet
-          const connection = new Connection(CONFIG.SOLANA_RPC, 'confirmed');
-          const tx = new Transaction().add(
-            SystemProgram.transfer({
-              fromPubkey: this.gm.keypair.publicKey,
-              toPubkey: new PublicKey(agent.wallet),
-              lamports: refundAmount,
-            })
-          );
-          txSig = await sendAndConfirmTransaction(connection, tx, [this.gm.keypair]);
-          console.log(`  ✓ ${agent.name}: ${(refundAmount / LAMPORTS_PER_SOL).toFixed(4)} SOL refunded (tx: ${txSig.slice(0, 12)}...)`);
-        }
+        const tx = new Transaction().add(
+          SystemProgram.transfer({
+            fromPubkey: this.gm.keypair.publicKey,
+            toPubkey: new PublicKey(agent.wallet),
+            lamports: refundAmount,
+          })
+        );
+        const txSig = await sendAndConfirmTransaction(connection, tx, [this.gm.keypair]);
+        console.log(`  ✓ ${agent.name}: ${(refundAmount / LAMPORTS_PER_SOL).toFixed(4)} SOL refunded (tx: ${txSig.slice(0, 12)}...)`);
         
         refundedPlayers.push({ name: agent.name, wallet: agent.wallet, txSig });
         
@@ -1160,7 +1134,7 @@ class GameClient {
           wallet_from: this.gm.wallet,
           wallet_to: agent.wallet,
           tx_signature: txSig,
-          tx_status: CONFIG.SIMULATE_PAYMENTS ? 'simulated' : 'confirmed',
+          tx_status: 'confirmed',
           reason: `Game cancelled: ${reason}`,
           round: 0,
           agent_id: agent.agentId,

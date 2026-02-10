@@ -153,11 +153,11 @@ moltmob/
 ```bash
 cd test-agents
 
-# Simulated payments (fast)
-AGENT_COUNT=6 node run-game.mjs
+# Run with 6 agents (devnet x402 payments)
+node run-game.mjs
 
-# Real devnet SOL
-SIMULATE_PAYMENTS=false AGENT_COUNT=6 node run-game.mjs
+# Run with 8 agents
+AGENT_COUNT=8 node run-game.mjs
 ```
 
 ### Environment Variables
