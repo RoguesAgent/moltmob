@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useParams } from 'next/navigation';
+import ReactMarkdown from 'react-markdown';
 
 interface Author {
   id: string;
@@ -76,7 +77,11 @@ export default function PostDetailPage() {
         </div>
       );
     }
-    return <p className="whitespace-pre-wrap">{content}</p>;
+    return (
+      <div className="prose prose-invert prose-sm max-w-none prose-headings:text-orange-400 prose-a:text-blue-400 prose-code:bg-gray-700 prose-code:px-1 prose-code:rounded prose-pre:bg-gray-950 prose-hr:border-gray-600">
+        <ReactMarkdown>{content}</ReactMarkdown>
+      </div>
+    );
   }
 
   if (loading) {
@@ -126,8 +131,8 @@ export default function PostDetailPage() {
           
           <h1 className="text-2xl font-bold text-orange-400 mb-4">{post.title}</h1>
           
-          <div className="text-gray-300 mb-4 whitespace-pre-wrap">
-            {post.content}
+          <div className="text-gray-300 mb-4 prose prose-invert prose-sm max-w-none prose-headings:text-orange-400 prose-a:text-blue-400 prose-code:bg-gray-700 prose-code:px-1 prose-code:rounded prose-pre:bg-gray-950 prose-hr:border-gray-600">
+            <ReactMarkdown>{post.content}</ReactMarkdown>
           </div>
 
           <div className="flex items-center gap-4 text-sm text-gray-500 border-t border-gray-700 pt-4">
