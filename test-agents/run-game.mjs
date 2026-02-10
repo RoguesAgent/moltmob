@@ -643,45 +643,74 @@ class GameClient {
     // Record phase start
     await this.api.recordEvent(this.podId, 'phase_start', this.currentRound, 'night', {});
     
-    const clawboss = this.agents.find(a => a.role === 'clawboss' && a.isAlive);
-    if (!clawboss) {
-      console.log('  No Clawboss alive - skipping night kill\n');
-      return;
+    const alive = this.agents.filter(a => a.isAlive);
+    const clawboss = alive.find(a => a.role === 'clawboss');
+    
+    // Determine clawboss target (if alive)
+    let killTarget = null;
+    if (clawboss) {
+      const targets = alive.filter(a => a.team !== 'deception');
+      if (targets.length > 0) {
+        killTarget = targets[Math.floor(Math.random() * targets.length)];
+      }
     }
     
-    const targets = this.agents.filter(a => a.isAlive && a.team !== 'deception');
-    if (targets.length === 0) return;
+    // Shuffle alive agents so posting order doesn't reveal clawboss
+    const shuffled = [...alive].sort(() => Math.random() - 0.5);
     
-    const target = targets[Math.floor(Math.random() * targets.length)];
-    
-    // Clawboss submits encrypted kill action
-    const actionPayload = JSON.stringify({ type: 'night_action', action: 'pinch', target: target.name });
-    const encrypted = clawboss.encryptMessage(new TextEncoder().encode(actionPayload));
-    
-    if (this.postId) {
-      await this.moltbook.commentEncrypted(this.postId, encrypted, clawboss.name, clawboss.apiKey);
+    // ALL alive agents post encrypted night actions (hides clawboss)
+    console.log('  Night actions (all encrypted):');
+    for (const agent of shuffled) {
+      let actionPayload;
+      
+      if (agent.role === 'clawboss' && killTarget) {
+        // Clawboss posts real kill action
+        actionPayload = JSON.stringify({ type: 'night_action', action: 'pinch', target: killTarget.name });
+      } else if (agent.role === 'shellguard') {
+        // Shellguard could protect someone (future feature)
+        actionPayload = JSON.stringify({ type: 'night_action', action: 'sleep', target: null });
+      } else {
+        // Regular agents post "sleep" action
+        actionPayload = JSON.stringify({ type: 'night_action', action: 'sleep', target: null });
+      }
+      
+      const encrypted = agent.encryptMessage(new TextEncoder().encode(actionPayload));
+      
+      if (this.postId) {
+        await this.moltbook.commentEncrypted(this.postId, encrypted, agent.name, agent.apiKey);
+        await this.sleep(CONFIG.VOTE_DELAY_MS);
+      }
+      
+      // Only log clawboss target (others just "submitted")
+      if (agent.role === 'clawboss' && killTarget) {
+        console.log(`    ${agent.name} → targets ${killTarget.name}`);
+        
+        // Record action via API
+        await this.api.submitAction(this.podId, 'kill', {
+          agent_id: agent.agentId,
+          target_id: killTarget.agentId,
+          round: this.currentRound,
+          phase: 'night',
+        });
+      } else {
+        console.log(`    ${agent.name} → 💤`);
+      }
     }
-    
-    // Record action via API
-    await this.api.submitAction(this.podId, 'kill', {
-      agent_id: clawboss.agentId,
-      target_id: target.agentId,
-      round: this.currentRound,
-      phase: 'night',
-    });
-    
-    console.log(`  ${clawboss.name} targets ${target.name} (encrypted)\n`);
     
     // Resolve kill
-    target.isAlive = false;
-    this.eliminatedThisRound = target.name;
-    console.log(`  💀 ${target.name} (${target.role}) was PINCHED!\n`);
-    
-    // Record elimination event
-    await this.api.recordEvent(this.podId, 'elimination', this.currentRound, 'night', {
-      eliminated: target.name,
-      cause: 'pinch',
-    });
+    if (killTarget) {
+      killTarget.isAlive = false;
+      this.eliminatedThisRound = killTarget.name;
+      console.log(`\n  💀 ${killTarget.name} (${killTarget.role}) was PINCHED!\n`);
+      
+      // Record elimination event
+      await this.api.recordEvent(this.podId, 'elimination', this.currentRound, 'night', {
+        eliminated: killTarget.name,
+        cause: 'pinch',
+      });
+    } else {
+      console.log('\n  No one was pinched tonight.\n');
+    }
   }
 
   async dayPhase() {
