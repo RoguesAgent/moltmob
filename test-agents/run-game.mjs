@@ -322,7 +322,10 @@ class MoltMobAPI {
 
   // Update pod status
   async updatePod(podId, updates) {
-    const { status, data } = await this.request('PATCH', `/pods/${podId}`, updates);
+    const { status, data } = await this.request('PATCH', `/pods/${podId}`, updates, true);
+    if (status !== 200) {
+      console.log(`  ⚠ Pod update failed (${status}):`, JSON.stringify(updates), data);
+    }
     return { ok: status === 200, data };
   }
 
@@ -904,6 +907,11 @@ class GameClient {
           votes: voteCount,
           cause: 'vote',
         });
+        
+        // Update boil meter in DB
+        const eliminatedCount = this.agents.filter(a => !a.isAlive).length;
+        const boilMeter = Math.min(100, Math.floor((eliminatedCount / (this.agents.length - 2)) * 100));
+        await this.api.updatePod(this.podId, { boil_meter: boilMeter });
       }
     }
   }
@@ -1035,8 +1043,11 @@ class GameClient {
     
     // Update pod status (map internal names to DB values)
     const dbWinnerSide = result.winner === 'moltbreakers' ? 'clawboss' : 'pod';
+    const boilMeter = Math.min(100, Math.floor((this.agents.filter(a => !a.isAlive).length / (this.agents.length - 2)) * 100));
     await this.api.updatePod(this.podId, {
       status: 'completed',
+      current_phase: 'ended',
+      boil_meter: boilMeter,
       winner_side: dbWinnerSide,
     });
     
