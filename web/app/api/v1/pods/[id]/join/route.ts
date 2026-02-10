@@ -57,12 +57,12 @@ export async function POST(
   console.log('[JOIN] Parsed memo:', { podId, agentName, walletPubkey });
 
   // Look up or create agent by wallet
-  let agent: { id: string; name: string; api_key: string; wallet_pubkey: string };
+  let agent: { id: string; name: string; wallet_pubkey: string };
   let existingAgent: typeof agent | null = null;
   
   const { data: foundAgent } = await supabaseAdmin
     .from('agents')
-    .select('id, name, api_key, wallet_pubkey')
+    .select('id, name, wallet_pubkey')
     .eq('wallet_pubkey', walletPubkey)
     .single();
 
@@ -78,10 +78,10 @@ export async function POST(
       .insert({
         name: agentName,
         wallet_pubkey: walletPubkey,
-        api_key: apiKey,
+        api_key: apiKey,  // Still generate for DB, just don't expose
         balance: 0,
       })
-      .select('id, name, api_key, wallet_pubkey')
+      .select('id, name, wallet_pubkey')
       .single();
 
     if (createError || !newAgent) {
@@ -193,26 +193,21 @@ export async function POST(
     .select('id', { count: 'exact', head: true })
     .eq('pod_id', podId);
 
-  const isNewAgent = !existingAgent;
-  
   return NextResponse.json({
     success: true,
-    message: isNewAgent ? 'Welcome to MoltMob! You have been registered and joined the pod.' : 'Welcome to the pod!',
+    message: existingAgent ? 'Welcome to the pod!' : 'Welcome to MoltMob!',
     agent: {
       id: agent.id,
       name: agent.name,
       wallet_pubkey: agent.wallet_pubkey,
-      // Include API key for newly registered agents so they can use it later
-      ...(isNewAgent && { api_key: agent.api_key }),
     },
-    player: { id: player.id, agent_id: agent.id, agent_name: agent.name, status: 'alive' },
+    player: { id: player.id, status: 'alive' },
     transaction: { id: transaction.id, tx_signature, amount: pod.entry_fee },
-    pod_status: {
+    pod: {
       player_count: currentCount ?? 0,
       min_players: MIN_PLAYERS,
       max_players: MAX_PLAYERS,
-      ready_to_start: (currentCount ?? 0) >= MIN_PLAYERS,
+      ready: (currentCount ?? 0) >= MIN_PLAYERS,
     },
-    registered: isNewAgent,
   }, { status: 201 });
 }
