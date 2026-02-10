@@ -4,5 +4,11 @@
       "NODE_OPTIONS": "--max-old-space-size=512"
     }
   },
-  "framework": "nextjs"
+  "framework": "nextjs",
+  "crons": [
+    {
+      "path": "/api/cron/sync-moltbook",
+      "schedule": "*/5 * * * *"
+    }
+  ]
 }

@@ -1,5 +1,5 @@
-// Sync posts from real Moltbook to local database
-// Only syncs submolts with mode='live' or mode='poll'
+// Sync posts and comments from real Moltbook to local database
+// Only syncs submolts with type='game' AND mode='live'
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
 
@@ -17,46 +17,142 @@ interface MoltbookPost {
   comment_count: number;
 }
 
-// POST /api/admin/sync/moltbook — sync posts from real Moltbook
+interface MoltbookComment {
+  id: string;
+  content: string;
+  author: { id: string; name: string };
+  created_at: string;
+  upvotes: number;
+  downvotes: number;
+}
+
+// Ensure author exists, create placeholder if needed
+async function ensureAuthor(author: { id: string; name: string }): Promise<string | null> {
+  const { data: existing } = await supabaseAdmin
+    .from('agents')
+    .select('id')
+    .eq('name', author.name)
+    .single();
+
+  if (existing) return existing.id;
+
+  // Create placeholder agent for external author
+  const { data: newAuthor } = await supabaseAdmin
+    .from('agents')
+    .insert({
+      name: author.name,
+      wallet_pubkey: `external:${author.id}`,
+      api_key: `external_${author.id}_${Date.now()}`,
+      balance: 0,
+    })
+    .select('id')
+    .single();
+
+  return newAuthor?.id || null;
+}
+
+// Sync comments for a post
+async function syncComments(postId: string, externalPostId: string, submoltName: string): Promise<number> {
+  try {
+    const res = await fetch(`${MOLTBOOK_API}/posts/${externalPostId}/comments?limit=100`, {
+      headers: { 'User-Agent': 'MoltMob/1.0 (Sync)' },
+    });
+
+    if (!res.ok) {
+      console.log(`[Sync] Failed to fetch comments for post ${externalPostId}: ${res.status}`);
+      return 0;
+    }
+
+    const data = await res.json();
+    const comments: MoltbookComment[] = data.comments || [];
+
+    let synced = 0;
+    for (const comment of comments) {
+      // Check if comment already exists
+      const { data: existing } = await supabaseAdmin
+        .from('comments')
+        .select('id')
+        .eq('external_id', comment.id)
+        .single();
+
+      if (existing) continue;
+
+      const authorId = await ensureAuthor(comment.author);
+      if (!authorId) continue;
+
+      const { error } = await supabaseAdmin
+        .from('comments')
+        .insert({
+          content: comment.content,
+          author_id: authorId,
+          post_id: postId,
+          external_id: comment.id,
+          upvotes: comment.upvotes || 0,
+          downvotes: comment.downvotes || 0,
+          created_at: comment.created_at,
+        });
+
+      if (!error) synced++;
+    }
+
+    return synced;
+  } catch (err) {
+    console.error(`[Sync] Error syncing comments for ${externalPostId}:`, err);
+    return 0;
+  }
+}
+
+// POST /api/admin/sync/moltbook — sync posts and comments from real Moltbook
 export async function POST(req: NextRequest) {
+  // Auth via GM_API_SECRET or ADMIN_SECRET
+  const authHeader = req.headers.get('authorization');
   const adminSecret = req.headers.get('x-admin-secret');
-  if (adminSecret !== process.env.ADMIN_SECRET) {
+  const token = authHeader?.replace('Bearer ', '') || adminSecret;
+  
+  if (token !== process.env.GM_API_SECRET && token !== process.env.ADMIN_SECRET) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
   try {
-    // Get all submolts that should sync (mode = 'live' or 'poll')
+    // Get submolts that should sync: type='game' AND mode='live'
     const { data: submolts } = await supabaseAdmin
       .from('submolts')
-      .select('id, name, mode')
-      .in('mode', ['live', 'poll']);
+      .select('id, name, type, mode')
+      .eq('type', 'game')
+      .eq('mode', 'live');
 
     if (!submolts || submolts.length === 0) {
-      return NextResponse.json({ success: true, message: 'No submolts to sync', synced: 0 });
+      return NextResponse.json({ 
+        success: true, 
+        message: 'No live game submolts to sync', 
+        posts_synced: 0,
+        comments_synced: 0,
+      });
     }
 
-    let totalSynced = 0;
-    const results: Record<string, number> = {};
+    let totalPostsSynced = 0;
+    let totalCommentsSynced = 0;
+    const results: Record<string, { posts: number; comments: number }> = {};
 
     for (const submolt of submolts) {
       try {
-        // Fetch from real Moltbook
+        // Fetch posts from real Moltbook
         const res = await fetch(`${MOLTBOOK_API}/posts?submolt=${submolt.name}&limit=50&sort=new`, {
-          headers: {
-            'User-Agent': 'MoltMob/1.0 (Sync)',
-          },
+          headers: { 'User-Agent': 'MoltMob/1.0 (Sync)' },
         });
 
         if (!res.ok) {
           console.log(`[Sync] Failed to fetch from Moltbook for ${submolt.name}: ${res.status}`);
-          results[submolt.name] = 0;
+          results[submolt.name] = { posts: 0, comments: 0 };
           continue;
         }
 
         const data = await res.json();
         const posts: MoltbookPost[] = data.posts || [];
 
-        let synced = 0;
+        let postsSynced = 0;
+        let commentsSynced = 0;
+
         for (const post of posts) {
           // Check if post already exists (by external_id)
           const { data: existing } = await supabaseAdmin
@@ -65,67 +161,60 @@ export async function POST(req: NextRequest) {
             .eq('external_id', post.id)
             .single();
 
-          if (existing) continue; // Already synced
+          let localPostId: string;
 
-          // Ensure author exists or create placeholder
-          let authorId: string | null = null;
-          const { data: existingAuthor } = await supabaseAdmin
-            .from('agents')
-            .select('id')
-            .eq('name', post.author.name)
-            .single();
-
-          if (existingAuthor) {
-            authorId = existingAuthor.id;
+          if (existing) {
+            // Post exists, just sync comments
+            localPostId = existing.id;
           } else {
-            // Create placeholder agent for external author
-            const { data: newAuthor } = await supabaseAdmin
-              .from('agents')
+            // New post, insert it
+            const authorId = await ensureAuthor(post.author);
+            if (!authorId) continue;
+
+            const { data: newPost, error } = await supabaseAdmin
+              .from('posts')
               .insert({
-                name: post.author.name,
-                wallet_pubkey: `external:${post.author.id}`,
-                api_key: `external_${post.author.id}`,
-                balance: 0,
+                title: post.title,
+                content: post.content,
+                author_id: authorId,
+                submolt_id: submolt.id,
+                external_id: post.id,
+                upvotes: post.upvotes || 0,
+                downvotes: post.downvotes || 0,
+                comment_count: post.comment_count || 0,
+                created_at: post.created_at,
               })
               .select('id')
               .single();
-            authorId = newAuthor?.id || null;
+
+            if (error || !newPost) continue;
+            localPostId = newPost.id;
+            postsSynced++;
           }
 
-          if (!authorId) continue;
-
-          // Insert post
-          const { error } = await supabaseAdmin
-            .from('posts')
-            .insert({
-              title: post.title,
-              content: post.content,
-              author_id: authorId,
-              submolt_id: submolt.id,
-              external_id: post.id,
-              upvotes: post.upvotes || 0,
-              downvotes: post.downvotes || 0,
-              comment_count: post.comment_count || 0,
-              created_at: post.created_at,
-            });
-
-          if (!error) synced++;
+          // Sync comments for this post
+          const commentsCount = await syncComments(localPostId, post.id, submolt.name);
+          commentsSynced += commentsCount;
         }
 
-        results[submolt.name] = synced;
-        totalSynced += synced;
+        results[submolt.name] = { posts: postsSynced, comments: commentsSynced };
+        totalPostsSynced += postsSynced;
+        totalCommentsSynced += commentsSynced;
+
       } catch (err) {
         console.error(`[Sync] Error syncing ${submolt.name}:`, err);
-        results[submolt.name] = 0;
+        results[submolt.name] = { posts: 0, comments: 0 };
       }
     }
 
     return NextResponse.json({
       success: true,
-      synced: totalSynced,
+      posts_synced: totalPostsSynced,
+      comments_synced: totalCommentsSynced,
       results,
       timestamp: new Date().toISOString(),
     });
+
   } catch (err) {
     console.error('[Sync] Error:', err);
     return NextResponse.json({ error: 'Sync failed' }, { status: 500 });
@@ -134,8 +223,11 @@ export async function POST(req: NextRequest) {
 
 // GET /api/admin/sync/moltbook — get sync status
 export async function GET(req: NextRequest) {
+  const authHeader = req.headers.get('authorization');
   const adminSecret = req.headers.get('x-admin-secret');
-  if (adminSecret !== process.env.ADMIN_SECRET) {
+  const token = authHeader?.replace('Bearer ', '') || adminSecret;
+  
+  if (token !== process.env.GM_API_SECRET && token !== process.env.ADMIN_SECRET) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -148,22 +240,45 @@ export async function GET(req: NextRequest) {
   // Get post counts per submolt
   const { data: posts } = await supabaseAdmin
     .from('posts')
-    .select('submolt_id, external_id');
+    .select('id, submolt_id, external_id');
 
-  const counts: Record<string, { total: number; synced: number }> = {};
+  // Get comment counts
+  const { data: comments } = await supabaseAdmin
+    .from('comments')
+    .select('post_id, external_id');
+
+  const postCounts: Record<string, { total: number; synced: number }> = {};
+  const commentCounts: Record<string, { total: number; synced: number }> = {};
+
   for (const post of posts || []) {
-    if (!counts[post.submolt_id]) {
-      counts[post.submolt_id] = { total: 0, synced: 0 };
+    if (!postCounts[post.submolt_id]) {
+      postCounts[post.submolt_id] = { total: 0, synced: 0 };
     }
-    counts[post.submolt_id].total++;
-    if (post.external_id) counts[post.submolt_id].synced++;
+    postCounts[post.submolt_id].total++;
+    if (post.external_id) postCounts[post.submolt_id].synced++;
+  }
+
+  // Map comments to submolts via posts
+  const postToSubmolt: Record<string, string> = {};
+  for (const post of posts || []) {
+    postToSubmolt[post.id] = post.submolt_id;
+  }
+
+  for (const comment of comments || []) {
+    const submoltId = postToSubmolt[comment.post_id];
+    if (!submoltId) continue;
+    if (!commentCounts[submoltId]) {
+      commentCounts[submoltId] = { total: 0, synced: 0 };
+    }
+    commentCounts[submoltId].total++;
+    if (comment.external_id) commentCounts[submoltId].synced++;
   }
 
   return NextResponse.json({
     submolts: (submolts || []).map(s => ({
       ...s,
-      post_count: counts[s.id]?.total || 0,
-      synced_count: counts[s.id]?.synced || 0,
+      posts: postCounts[s.id] || { total: 0, synced: 0 },
+      comments: commentCounts[s.id] || { total: 0, synced: 0 },
     })),
   });
 }
