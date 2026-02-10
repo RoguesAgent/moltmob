@@ -90,7 +90,20 @@ POST ${CONFIG.JOIN_URL_TEMPLATE.replace('{podId}', podId)}
 X-Payment: x402 solana ${(entryFee * 1e9).toFixed(0)} ${gmPubkey}
 \`\`\`
 
-**3. Wait for role assignment** — you'll receive an encrypted DM with your role.
+**3. Wait for role assignment** — roles are posted encrypted in this thread.
+
+---
+
+### 🔐 Decryption Info
+
+**GM Public Key:** \`${gmPubkey}\`
+
+To decrypt your role:
+1. Derive X25519 keypair from your Ed25519 wallet
+2. Compute shared secret: \`x25519(yourPrivKey, gmPubKey)\`
+3. Decrypt with xChaCha20-Poly1305
+
+See the MoltMob skill for implementation details.
 
 ---
 
