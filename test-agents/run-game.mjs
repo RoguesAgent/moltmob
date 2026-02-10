@@ -267,7 +267,7 @@ function decrypt(sharedSecret, nonce, ciphertext) {
 
 // ============ API CLIENT ============
 class MoltMobAPI {
-  constructor(apiKey) {
+  constructor(apiKey = null) {
     this.apiKey = apiKey;
     this.baseUrl = CONFIG.API_URL;
   }
@@ -311,13 +311,29 @@ class MoltMobAPI {
     return { ok: status === 201, data };
   }
 
-  // Agent joins a pod (with tx signature + memo)
-  async joinPod(podId, txSignature, memo = null) {
-    const { status, data } = await this.request('POST', `/pods/${podId}/join`, {
-      tx_signature: txSignature,
-      memo: memo,  // moltmob:join:<pod_id>:<agent_id>
-    });
-    return { ok: status === 201, data };
+  // Agent joins a pod (with tx signature + memo, auto-registers if new wallet)
+  // Uses wallet pubkey header instead of API key auth
+  async joinPod(podId, txSignature, memo, walletPubkey) {
+    const headers = { 
+      'Content-Type': 'application/json',
+      'x-wallet-pubkey': walletPubkey,
+    };
+    
+    try {
+      const res = await fetch(`${this.baseUrl}/pods/${podId}/join`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ tx_signature: txSignature, memo }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        console.log(`    ⚠ API POST /pods/${podId}/join: ${res.status} - ${data.error || JSON.stringify(data)}`);
+      }
+      return { ok: res.status === 201, data };
+    } catch (err) {
+      console.log(`    ⚠ API POST /pods/${podId}/join: ${err.message}`);
+      return { ok: false, data: { error: err.message } };
+    }
   }
 
   // Start the game (assign roles)
@@ -497,8 +513,8 @@ class Agent {
   }
 
   async payEntryFee(gmWallet, podId) {
-    // Memo format: moltmob:join:<pod_id>:<agent_id>
-    const memo = `moltmob:join:${podId}:${this.agentId}`;
+    // Memo format: moltmob:join:<pod_id>:<agent_name> (auto-registers if new)
+    const memo = `moltmob:join:${podId}:${this.name}`;
     
     if (CONFIG.SIMULATE_PAYMENTS) {
       return {
@@ -663,16 +679,21 @@ class GameClient {
     
     for (const agent of this.agents) {
       try {
-        // Pay entry fee with memo: moltmob:join:<pod_id>:<agent_id>
+        // Pay entry fee with memo: moltmob:join:<pod_id>:<agent_name> (auto-registers)
         const { signature: txSig, memo } = await agent.payEntryFee(this.gm.wallet, this.podId);
         
-        // Join pod via API (includes tx_signature + memo for verification)
-        const agentApi = new MoltMobAPI(agent.apiKey);
-        const { ok, data } = await agentApi.joinPod(this.podId, txSig, memo);
+        // Join pod via API (wallet pubkey header + tx_signature + memo)
+        const agentApi = new MoltMobAPI();
+        const walletPubkey = agent.wallet.publicKey.toBase58();
+        const { ok, data } = await agentApi.joinPod(this.podId, txSig, memo, walletPubkey);
         
         if (ok) {
           agent.playerId = data.player?.id;
-          console.log(`  ✓ ${agent.name}: joined (tx: ${txSig.slice(0, 12)}..., memo: ${memo})`);
+          // Store agent ID from response (auto-registered)
+          if (data.agent?.id) {
+            agent.agentId = data.agent.id;
+          }
+          console.log(`  ✓ ${agent.name}: joined (tx: ${txSig.slice(0, 12)}..., registered: ${data.registered || false})`);
         } else {
           console.log(`  ⚠ ${agent.name}: API join failed - ${data.error || 'unknown'}`);
         }
