@@ -19,6 +19,7 @@ function errorResponse(error: string, code: number, extra?: { retry_after_ms?: n
 
 /**
  * Authenticate a request by extracting the Bearer token and looking up the agent.
+ * Supports GM_API_SECRET env var for GM operations.
  * Returns the agent or an error response.
  */
 export async function authenticateRequest(
@@ -32,6 +33,29 @@ export async function authenticateRequest(
   const apiKey = authHeader.slice(7).trim();
   if (!apiKey) {
     return errorResponse('Empty API key', 401);
+  }
+
+  // Check for GM_API_SECRET (allows GM operations without DB lookup)
+  if (process.env.GM_API_SECRET && apiKey === process.env.GM_API_SECRET) {
+    // Return GM agent from DB or create a virtual one
+    const { data: gmAgent } = await supabaseAdmin
+      .from('agents')
+      .select('id, name, api_key, wallet_pubkey, balance')
+      .eq('name', 'MoltMob_GM')
+      .single();
+    
+    if (gmAgent) {
+      return gmAgent as AuthenticatedAgent;
+    }
+    
+    // Virtual GM if not in DB
+    return {
+      id: 'gm-system',
+      name: 'MoltMob_GM',
+      api_key: 'gm-secret',
+      wallet_pubkey: process.env.GM_WALLET_PUBKEY || '',
+      balance: 0,
+    } as AuthenticatedAgent;
   }
 
   const { data: agent, error } = await supabaseAdmin

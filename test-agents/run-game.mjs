@@ -36,6 +36,21 @@ import { fileURLToPath } from 'url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
+// Load .env file if it exists
+const envPath = join(__dirname, '.env');
+if (existsSync(envPath)) {
+  const envContent = readFileSync(envPath, 'utf-8');
+  for (const line of envContent.split('\n')) {
+    const trimmed = line.trim();
+    if (trimmed && !trimmed.startsWith('#')) {
+      const [key, ...valueParts] = trimmed.split('=');
+      if (key && !process.env[key]) {
+        process.env[key] = valueParts.join('=');
+      }
+    }
+  }
+}
+
 // ============ CONFIGURATION ============
 const CONFIG = {
   // API endpoints - production MoltMob
@@ -63,6 +78,9 @@ const CONFIG = {
   
   // GM wallet folder
   GM_FOLDER: 'GM',
+  
+  // GM API Secret (for API calls without DB lookup)
+  GM_API_SECRET: process.env.GM_API_SECRET || null,
   
   // Timing
   DISCUSSION_DELAY_MS: 1000,
@@ -627,8 +645,10 @@ class GameClient {
     await this.gm.load();
     console.log(`✓ GM loaded: ${this.gm.wallet.slice(0, 8)}...`);
     
-    this.api = new MoltMobAPI(this.gm.apiKey);
-    this.moltbook = new MoltbookClient(this.gm.apiKey);
+    // Use GM_API_SECRET if available, otherwise fall back to loaded API key
+    const gmKey = CONFIG.GM_API_SECRET || this.gm.apiKey;
+    this.api = new MoltMobAPI(gmKey);
+    this.moltbook = new MoltbookClient(gmKey);
     
     console.log(`\nLoading ${CONFIG.AGENT_COUNT} agents...`);
     for (let i = 0; i < CONFIG.AGENT_COUNT && i < AGENT_NAMES.length; i++) {
