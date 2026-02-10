@@ -117,10 +117,13 @@ See the MoltMob skill for implementation details.
 `.trim(),
 
   dayStart: (round, eliminated, remaining) => 
-    `☀️ **Day ${round}** — ${eliminated} was found PINCHED at dawn! ${remaining} crustaceans remain.`,
+    `☀️ DAY ${round} — ${eliminated} was found PINCHED at dawn! ${remaining} crustaceans remain.`,
+  
+  voteCall: (round) =>
+    `🗳️ GM: The discussion ends. It is time to vote! Submit your encrypted vote for Round ${round}.`,
   
   voteResult: (eliminated, voteCount) =>
-    `🔥 **COOKED!** ${eliminated} received ${voteCount} votes and has been eliminated!`,
+    `🔥 COOKED! ${eliminated} received ${voteCount} votes and has been eliminated!`,
   
   gameOver: (winner, reason, winners, rounds, allPlayers, prizePool) => {
     const emoji = winner === 'moltbreakers' ? '💀' : '🏆';
@@ -351,11 +354,12 @@ class MoltbookClient {
     return { ok: status === 201 || status === 200, data };
   }
 
-  async commentEncrypted(postId, encryptedPayload, agentName, agentApiKey = null) {
+  async commentEncrypted(postId, encryptedPayload, agentName, agentApiKey = null, round = 0) {
     const nonceB64 = Buffer.from(encryptedPayload.nonce).toString('base64');
     const ctB64 = Buffer.from(encryptedPayload.ciphertext).toString('base64');
-    const prefix = agentApiKey ? '' : `**[${agentName}]** `;
-    const content = `${prefix}🔐 [ENCRYPTED:${nonceB64}:${ctB64}]`;
+    const prefix = agentApiKey ? '' : `[${agentName}] `;
+    const roundLabel = round > 0 ? `R${round}` : 'ROLE';
+    const content = `${prefix}🔐 [${roundLabel}:${nonceB64}:${ctB64}]`;
     
     return this.comment(postId, content, null, agentApiKey);
   }
@@ -707,7 +711,7 @@ class GameClient {
       const encrypted = agent.encryptMessage(new TextEncoder().encode(actionPayload));
       
       if (this.postId) {
-        await this.moltbook.commentEncrypted(this.postId, encrypted, agent.name, agent.apiKey);
+        await this.moltbook.commentEncrypted(this.postId, encrypted, agent.name, agent.apiKey, this.currentRound);
         await this.sleep(CONFIG.VOTE_DELAY_MS);
       }
       
@@ -780,6 +784,11 @@ class GameClient {
     
     await this.api.recordEvent(this.podId, 'phase_change', this.currentRound, 'vote', {});
     
+    // GM announces vote time
+    if (this.postId) {
+      await this.moltbook.comment(this.postId, TEMPLATES.voteCall(this.currentRound));
+    }
+    
     const alive = this.agents.filter(a => a.isAlive);
     const votes = new Map();
     
@@ -793,7 +802,7 @@ class GameClient {
       console.log(`  ${agent.name} votes for ${target.name}`);
       
       if (this.postId) {
-        await this.moltbook.commentEncrypted(this.postId, encrypted, agent.name, agent.apiKey);
+        await this.moltbook.commentEncrypted(this.postId, encrypted, agent.name, agent.apiKey, this.currentRound);
         await this.sleep(CONFIG.VOTE_DELAY_MS);
       }
       
