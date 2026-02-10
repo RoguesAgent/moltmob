@@ -2,6 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import Pagination from '@/components/Pagination';
+
+const ITEMS_PER_PAGE = 20;
 
 interface Post {
   id: string;
@@ -20,9 +23,17 @@ export default function AdminPostsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [submolt, setSubmolt] = useState('moltmob');
+  const [currentPage, setCurrentPage] = useState(1);
+
+  const totalPages = Math.ceil(posts.length / ITEMS_PER_PAGE);
+  const paginatedPosts = posts.slice(
+    (currentPage - 1) * ITEMS_PER_PAGE,
+    currentPage * ITEMS_PER_PAGE
+  );
 
   useEffect(() => {
     fetchPosts();
+    setCurrentPage(1); // Reset page when submolt changes
   }, [submolt]);
 
   async function fetchPosts() {
@@ -85,40 +96,50 @@ export default function AdminPostsPage() {
             No posts in m/{submolt}
           </div>
         ) : (
-          <div className="space-y-4">
-            {posts.map((post) => (
-              <Link
-                key={post.id}
-                href={`/admin/posts/${post.id}`}
-                className="block bg-gray-800 rounded-lg p-4 hover:bg-gray-750 transition border border-gray-700 hover:border-orange-500"
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <h2 className="text-lg font-semibold text-orange-400 mb-1">
-                      {post.title}
-                    </h2>
-                    <p className="text-gray-400 text-sm mb-2 line-clamp-2">
-                      {post.content}
-                    </p>
-                    <div className="flex items-center gap-4 text-xs text-gray-500">
-                      <span>by {post.author.name}</span>
-                      <span>m/{post.submolt.name}</span>
-                      <span>{new Date(post.created_at).toLocaleString()}</span>
+          <>
+            <div className="space-y-4">
+              {paginatedPosts.map((post) => (
+                <Link
+                  key={post.id}
+                  href={`/admin/posts/${post.id}`}
+                  className="block bg-gray-800 rounded-lg p-4 hover:bg-gray-750 transition border border-gray-700 hover:border-orange-500"
+                >
+                  <div className="flex items-start justify-between">
+                    <div className="flex-1">
+                      <h2 className="text-lg font-semibold text-orange-400 mb-1">
+                        {post.title}
+                      </h2>
+                      <p className="text-gray-400 text-sm mb-2 line-clamp-2">
+                        {post.content}
+                      </p>
+                      <div className="flex items-center gap-4 text-xs text-gray-500">
+                        <span>by {post.author.name}</span>
+                        <span>m/{post.submolt.name}</span>
+                        <span>{new Date(post.created_at).toLocaleString()}</span>
+                      </div>
+                    </div>
+                    <div className="flex flex-col items-end gap-1 ml-4">
+                      <div className="flex items-center gap-2">
+                        <span className="text-green-500">↑{post.upvotes}</span>
+                        <span className="text-red-500">↓{post.downvotes}</span>
+                      </div>
+                      <div className="bg-orange-600 text-white px-2 py-1 rounded text-sm font-medium">
+                        💬 {post.comment_count}
+                      </div>
                     </div>
                   </div>
-                  <div className="flex flex-col items-end gap-1 ml-4">
-                    <div className="flex items-center gap-2">
-                      <span className="text-green-500">↑{post.upvotes}</span>
-                      <span className="text-red-500">↓{post.downvotes}</span>
-                    </div>
-                    <div className="bg-orange-600 text-white px-2 py-1 rounded text-sm font-medium">
-                      💬 {post.comment_count}
-                    </div>
-                  </div>
-                </div>
-              </Link>
-            ))}
-          </div>
+                </Link>
+              ))}
+            </div>
+
+            <Pagination
+              currentPage={currentPage}
+              totalPages={totalPages}
+              onPageChange={setCurrentPage}
+              totalItems={posts.length}
+              itemsPerPage={ITEMS_PER_PAGE}
+            />
+          </>
         )}
       </div>
     </div>

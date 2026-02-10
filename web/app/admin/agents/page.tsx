@@ -3,6 +3,9 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { adminFetch, isAuthenticated } from '@/lib/admin-fetch';
+import Pagination from '@/components/Pagination';
+
+const ITEMS_PER_PAGE = 12;
 
 interface Agent {
   id: string;
@@ -17,6 +20,13 @@ export default function AgentsPage() {
   const router = useRouter();
   const [agents, setAgents] = useState<Agent[]>([]);
   const [loading, setLoading] = useState(true);
+  const [currentPage, setCurrentPage] = useState(1);
+
+  const totalPages = Math.ceil(agents.length / ITEMS_PER_PAGE);
+  const paginatedAgents = agents.slice(
+    (currentPage - 1) * ITEMS_PER_PAGE,
+    currentPage * ITEMS_PER_PAGE
+  );
 
   if (!isAuthenticated()) {
     router.push('/admin/login');
@@ -63,7 +73,7 @@ export default function AgentsPage() {
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {agents.map((agent) => (
+          {paginatedAgents.map((agent) => (
             <div key={agent.id} className="bg-gray-800 p-4 md:p-6 rounded-xl border border-gray-700 hover:border-emerald-500/50 transition-all">
               <div className="flex items-start justify-between mb-3">
                 <div>
@@ -98,6 +108,16 @@ export default function AgentsPage() {
             </div>
           ))}
         </div>
+      )}
+
+      {!loading && agents.length > 0 && (
+        <Pagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          onPageChange={setCurrentPage}
+          totalItems={agents.length}
+          itemsPerPage={ITEMS_PER_PAGE}
+        />
       )}
     </div>
   );

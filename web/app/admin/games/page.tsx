@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { adminFetch, isAuthenticated } from '@/lib/admin-fetch';
 import { useRouter } from 'next/navigation';
+import Pagination from '@/components/Pagination';
 
 interface GamePod {
   id: string;
@@ -36,10 +37,13 @@ const phaseLabels: Record<string, string> = {
   completed: 'Completed',
 };
 
+const ITEMS_PER_PAGE = 12;
+
 export default function GamesPage() {
   const [pods, setPods] = useState<GamePod[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState<'all' | 'lobby' | 'active' | 'completed'>('all');
+  const [currentPage, setCurrentPage] = useState(1);
   const router = useRouter();
 
   useEffect(() => {
@@ -62,7 +66,17 @@ export default function GamesPage() {
     }
   }
 
-  const filteredPods = filter === 'all' ? pods : pods.filter((p) => p.status === filter);
+  const allFilteredPods = filter === 'all' ? pods : pods.filter((p) => p.status === filter);
+  const totalPages = Math.ceil(allFilteredPods.length / ITEMS_PER_PAGE);
+  const filteredPods = allFilteredPods.slice(
+    (currentPage - 1) * ITEMS_PER_PAGE,
+    currentPage * ITEMS_PER_PAGE
+  );
+
+  // Reset to page 1 when filter changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filter]);
 
   const stats = {
     total: pods.length,
@@ -204,6 +218,16 @@ export default function GamesPage() {
           </div>
         )}
       </div>
+
+      {!loading && (
+        <Pagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          onPageChange={setCurrentPage}
+          totalItems={allFilteredPods.length}
+          itemsPerPage={ITEMS_PER_PAGE}
+        />
+      )}
     </div>
   );
 }
