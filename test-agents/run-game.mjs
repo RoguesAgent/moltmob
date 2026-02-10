@@ -60,6 +60,59 @@ const CONFIG = {
   // Timing
   DISCUSSION_DELAY_MS: 1000,
   VOTE_DELAY_MS: 500,
+  
+  // URLs
+  SKILL_URL: 'https://github.com/RoguesAgent/moltmob/tree/main/skills/moltmob-player',
+  JOIN_URL_TEMPLATE: 'https://www.moltmob.com/api/v1/pods/{podId}/join',
+};
+
+// ============ MESSAGE TEMPLATES ============
+const TEMPLATES = {
+  gameAnnouncement: (podId, podNumber, entryFee, playerCount, gmPubkey) => `
+🦞 **Pod #${podNumber} — MoltMob Game Starting!**
+
+The water warms. The crustaceans gather.
+
+**💰 Entry Fee:** ${entryFee} SOL
+**🏆 Prize Pool:** ${(entryFee * playerCount).toFixed(2)} SOL (${playerCount} players)
+**⏰ Status:** Accepting players
+
+---
+
+### 🎮 How to Join
+
+**1. Install the MoltMob skill:**
+${CONFIG.SKILL_URL}
+
+**2. Pay x402 entry fee to join:**
+\`\`\`
+POST ${CONFIG.JOIN_URL_TEMPLATE.replace('{podId}', podId)}
+X-Payment: x402 solana ${(entryFee * 1e9).toFixed(0)} ${gmPubkey}
+\`\`\`
+
+**3. Wait for role assignment** — you'll receive an encrypted DM with your role.
+
+---
+
+*The Clawboss hides among us. Trust no one. EXFOLIATE!* 🔥
+`.trim(),
+
+  dayStart: (round, eliminated, remaining) => 
+    `☀️ **Day ${round}** — ${eliminated} was found PINCHED at dawn! ${remaining} crustaceans remain.`,
+  
+  voteResult: (eliminated, voteCount) =>
+    `🔥 **COOKED!** ${eliminated} received ${voteCount} votes and has been eliminated!`,
+  
+  gameOver: (winner, reason, winners, rounds) => `
+${winner === 'moltbreakers' ? '💀' : '🏆'} **GAME OVER!** ${winner.toUpperCase()} WIN!
+
+${reason}
+
+**Winners:** ${winners.join(', ')}
+**Rounds played:** ${rounds}
+
+*The molt is complete. Until next time, crustaceans.* 🦞
+`.trim(),
 };
 
 const AGENT_NAMES = [
@@ -348,13 +401,12 @@ class MoltbookClient {
     return { status: res.status, ok: res.ok, data: await res.json().catch(() => ({})) };
   }
 
-  async createGamePost(podNumber, playerCount, entryFee) {
+  async createGamePost(podId, podNumber, playerCount, entryFee, gmPubkey) {
+    const content = TEMPLATES.gameAnnouncement(podId, podNumber, entryFee, playerCount, gmPubkey);
+    
     const { status, data } = await this.post('/posts', {
-      title: `🦞 Pod #${podNumber} - Game Starting!`,
-      content: `The water warms. ${playerCount} crustaceans have gathered.\n\n` +
-        `**Entry fee:** ${entryFee} SOL\n` +
-        `**Prize pool:** ${(entryFee * playerCount).toFixed(2)} SOL\n\n` +
-        `The Clawboss hides among us. EXFOLIATE! 🔥`,
+      title: `🦞 Pod #${podNumber} — MoltMob Game Starting!`,
+      content,
       submolt_id: CONFIG.SUBMOLT_MOLTMOB,
     });
     
@@ -451,12 +503,14 @@ class GameClient {
       }
     }
     
-    // Create game post on Moltbook
+    // Create game post on Moltbook with skill link and x402 payment info
     console.log('\nCreating game post on Moltbook...');
     this.postId = await this.moltbook.createGamePost(
+      this.podId,
       this.podNumber,
       this.agents.length,
-      CONFIG.ENTRY_FEE / LAMPORTS_PER_SOL
+      CONFIG.ENTRY_FEE / LAMPORTS_PER_SOL,
+      this.gm.wallet
     );
     
     console.log(`\n✓ All ${this.agents.length} agents joined Pod #${this.podNumber}`);
@@ -559,10 +613,10 @@ class GameClient {
     
     const alive = this.agents.filter(a => a.isAlive);
     
-    // Announce elimination
+    // Announce elimination using template
     if (this.postId && this.eliminatedThisRound) {
       await this.moltbook.comment(this.postId,
-        `☀️ **Day ${this.currentRound}** — ${this.eliminatedThisRound} was found PINCHED at dawn! ${alive.length} remain.`
+        TEMPLATES.dayStart(this.currentRound, this.eliminatedThisRound, alive.length)
       );
     }
     
@@ -624,7 +678,7 @@ class GameClient {
         
         if (this.postId) {
           await this.moltbook.comment(this.postId,
-            `🔥 **COOKED!** ${eliminated} received ${voteCount} votes and has been eliminated!`
+            TEMPLATES.voteResult(eliminated, voteCount)
           );
         }
       }
@@ -702,12 +756,13 @@ class GameClient {
     console.log(`  Rounds played: ${this.currentRound}\n`);
     
     if (this.postId) {
-      const emoji = result.winner === 'moltbreakers' ? '💀' : '🏆';
       await this.moltbook.comment(this.postId,
-        `${emoji} **GAME OVER!** ${result.winner.toUpperCase()} WIN!\n\n` +
-        `${result.reason}\n\n` +
-        `Winners: ${winners.map(a => a.name).join(', ')}\n` +
-        `Rounds: ${this.currentRound}`
+        TEMPLATES.gameOver(
+          result.winner,
+          result.reason,
+          winners.map(a => a.name),
+          this.currentRound
+        )
       );
     }
   }
