@@ -64,6 +64,12 @@ const CONFIG = {
   // Timing
   DISCUSSION_DELAY_MS: 1000,
   VOTE_DELAY_MS: 500,
+  
+  // Game rules
+  MIN_PLAYERS: parseInt(process.env.MIN_PLAYERS || '6', 10),
+  
+  // Cancel mode: test cancellation flow
+  TEST_CANCEL: process.env.TEST_CANCEL === 'true',
 };
 
 const AGENT_NAMES = [
@@ -206,6 +212,25 @@ ${roleDisclosure}
 *The molt is complete. Until next time, crustaceans.* 🦞
 `.trim();
   },
+  
+  gameCancelled: (reason, playerCount, minPlayers, refundAmount, refundedPlayers) => `
+❌ **GAME CANCELLED**
+
+${reason}
+
+---
+
+**Players joined:** ${playerCount} / ${minPlayers} minimum
+**Refund amount:** ${refundAmount} SOL per player
+
+### 💸 Refunds Issued
+
+${refundedPlayers.map(p => `✓ ${p.name}: ${refundAmount} SOL`).join('\n')}
+
+---
+
+*The waters remain calm. Try again when more crustaceans gather.* 🌊
+`.trim(),
 };
 
 // ============ CRYPTO HELPERS ============
@@ -1061,11 +1086,105 @@ class GameClient {
     });
   }
 
+  async cancelGame(reason) {
+    console.log('\n═══════════════════════════════════════════════════════');
+    console.log('  GAME CANCELLED');
+    console.log('═══════════════════════════════════════════════════════\n');
+    console.log(`  Reason: ${reason}`);
+    console.log(`  Players: ${this.agents.length} / ${CONFIG.MIN_PLAYERS} minimum\n`);
+    
+    // Refund all players
+    const refundAmount = CONFIG.ENTRY_FEE;
+    const refundedPlayers = [];
+    
+    console.log('  Processing refunds...\n');
+    
+    for (const agent of this.agents) {
+      try {
+        let txSig;
+        if (CONFIG.SIMULATE_PAYMENTS) {
+          txSig = 'SIM_REFUND_' + Array.from({length: 32}, () => 
+            'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz123456789'[Math.floor(Math.random() * 58)]
+          ).join('');
+          console.log(`  ✓ ${agent.name}: ${(refundAmount / LAMPORTS_PER_SOL).toFixed(4)} SOL refunded (simulated)`);
+        } else {
+          // Real refund from GM wallet
+          const connection = new Connection(CONFIG.SOLANA_RPC, 'confirmed');
+          const tx = new Transaction().add(
+            SystemProgram.transfer({
+              fromPubkey: this.gm.keypair.publicKey,
+              toPubkey: new PublicKey(agent.wallet),
+              lamports: refundAmount,
+            })
+          );
+          txSig = await sendAndConfirmTransaction(connection, tx, [this.gm.keypair]);
+          console.log(`  ✓ ${agent.name}: ${(refundAmount / LAMPORTS_PER_SOL).toFixed(4)} SOL refunded (tx: ${txSig.slice(0, 12)}...)`);
+        }
+        
+        refundedPlayers.push({ name: agent.name, wallet: agent.wallet, txSig });
+        
+        // Record refund transaction
+        await this.api.recordTransaction(this.podId, {
+          tx_type: 'refund',
+          amount: refundAmount,
+          wallet_from: this.gm.wallet,
+          wallet_to: agent.wallet,
+          tx_signature: txSig,
+          tx_status: CONFIG.SIMULATE_PAYMENTS ? 'simulated' : 'confirmed',
+          reason: `Game cancelled: ${reason}`,
+          round: 0,
+          agent_id: agent.agentId,
+        });
+      } catch (err) {
+        console.log(`  ✗ ${agent.name}: refund failed - ${err.message}`);
+      }
+    }
+    
+    // Update pod status to cancelled
+    await this.api.updatePod(this.podId, {
+      status: 'cancelled',
+      current_phase: 'ended',
+    });
+    
+    // Post cancellation to Moltbook
+    if (this.postId) {
+      await this.moltbook.comment(this.postId, TEMPLATES.gameCancelled(
+        reason,
+        this.agents.length,
+        CONFIG.MIN_PLAYERS,
+        (refundAmount / LAMPORTS_PER_SOL).toFixed(2),
+        refundedPlayers
+      ));
+    }
+    
+    // Record cancellation event
+    await this.api.recordEvent(this.podId, 'pod_cancelled', 0, 'lobby', {
+      reason,
+      player_count: this.agents.length,
+      min_players: CONFIG.MIN_PLAYERS,
+      refunds: refundedPlayers.map(p => ({ agent: p.name, amount: refundAmount })),
+    });
+    
+    console.log('\n✓ Game cancelled, all players refunded');
+  }
+
   async run() {
     try {
       await this.initialize();
       await this.createPod();
       await this.joinPhase();
+      
+      // Check if we should cancel (test mode or not enough players)
+      if (CONFIG.TEST_CANCEL) {
+        await this.cancelGame('Cancelled for testing refund flow');
+        return;
+      }
+      
+      if (this.agents.length < CONFIG.MIN_PLAYERS) {
+        await this.cancelGame(`Not enough players (${this.agents.length}/${CONFIG.MIN_PLAYERS})`);
+        return;
+      }
+      
       await this.roleAssignment();
       
       while (true) {
