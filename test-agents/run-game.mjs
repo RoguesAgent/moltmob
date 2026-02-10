@@ -857,7 +857,7 @@ class GameClient {
     const loyal = alive.filter(a => a.team === 'loyal').length;
     
     if (deception === 0) return { winner: 'loyalists', reason: 'All Moltbreakers eliminated' };
-    if (deception >= loyal) return { winner: 'moltbreakers', reason: 'Moltbreakers have majority' };
+    if (deception > loyal) return { winner: 'moltbreakers', reason: 'Moltbreakers have majority' };
     return null;
   }
 
