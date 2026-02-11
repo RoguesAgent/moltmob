@@ -14,10 +14,14 @@ export async function POST(
   if (agentOrError instanceof NextResponse) return agentOrError;
 
   const body = await req.json();
-  const { tx_type, wallet, amount_lamports, tx_signature } = body;
+  const { tx_type, wallet, wallet_to, amount_lamports, amount, tx_signature, reason, round } = body;
 
-  if (!tx_type || !wallet || amount_lamports === undefined) {
-    return errorResponse('tx_type, wallet, and amount_lamports required', 400);
+  // Support both field names for compatibility
+  const finalWallet = wallet_to || wallet;
+  const finalAmount = amount ?? amount_lamports;
+
+  if (!tx_type || !finalWallet || finalAmount === undefined) {
+    return errorResponse('tx_type, wallet/wallet_to, and amount/amount_lamports required', 400);
   }
 
   // Verify pod exists
@@ -38,9 +42,12 @@ export async function POST(
       id: randomUUID(),
       pod_id: podId,
       tx_type,
-      wallet,
-      amount_lamports,
+      wallet_to: finalWallet,
+      amount: finalAmount,
       tx_signature,
+      tx_status: tx_signature ? 'confirmed' : 'pending',
+      reason,
+      round,
     })
     .select()
     .single();

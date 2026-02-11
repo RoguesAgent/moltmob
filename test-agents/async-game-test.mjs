@@ -706,15 +706,17 @@ EXFOLIATE! 🦞`;
           const txSig = await sendAndConfirmTransaction(connection, tx, [this.gmKeypair]);
           console.log(`  ✓ ${winner.displayName}: ${(payoutPerWinner / LAMPORTS_PER_SOL).toFixed(4)} SOL (tx: ${txSig.slice(0, 12)}...)`);
           
-          // Record payout transaction in database
-          await this.recordTransaction('payout', winner.wallet, payoutPerWinner, txSig);
+          // Record payout transaction in database (use role-specific type)
+          const payoutType = winner.role === 'clawboss' ? 'payout_clawboss' : 
+                            winner.role === 'krill' ? 'payout_survival' : 'payout_initiate';
+          await this.recordTransaction(payoutType, winner.wallet, payoutPerWinner, txSig, `Winner payout (${winner.role})`);
         } catch (err) {
           console.log(`  ✗ ${winner.displayName}: FAILED - ${err.message}`);
         }
       }
       
       // Record rake transaction (rake stays with GM)
-      await this.recordTransaction('rake', this.gmKeypair.publicKey.toBase58(), rake, null);
+      await this.recordTransaction('rake', this.gmKeypair.publicKey.toBase58(), rake, null, 'House rake (5%)');
     } else {
       console.log('  No payouts (no alive winners or empty pot)');
     }
@@ -981,7 +983,7 @@ EXFOLIATE! 🦞`;
     }
   }
 
-  async recordTransaction(txType, wallet, amountLamports, txSignature) {
+  async recordTransaction(txType, wallet, amountLamports, txSignature, reason = null) {
     try {
       await fetch(`${CONFIG.BASE_URL}/api/v1/pods/${this.podId}/transactions`, {
         method: 'POST',
@@ -991,9 +993,11 @@ EXFOLIATE! 🦞`;
         },
         body: JSON.stringify({
           tx_type: txType,
-          wallet,
-          amount_lamports: amountLamports,
+          wallet_to: wallet,
+          amount: amountLamports,
           tx_signature: txSignature,
+          reason,
+          round: this.currentRound,
         }),
       });
     } catch (err) {
