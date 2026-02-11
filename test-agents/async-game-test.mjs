@@ -955,7 +955,7 @@ EXFOLIATE! 🦞`;
 
   async updatePlayerRole(playerId, role) {
     try {
-      await fetch(`${CONFIG.BASE_URL}/api/v1/players/${playerId}`, {
+      const res = await fetch(`${CONFIG.BASE_URL}/api/v1/players/${playerId}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
@@ -963,8 +963,12 @@ EXFOLIATE! 🦞`;
         },
         body: JSON.stringify({ role, is_alive: true }),
       });
+      if (!res.ok) {
+        const text = await res.text();
+        console.log(`      ⚠ Role update failed for ${playerId}: ${res.status} ${text.slice(0, 100)}`);
+      }
     } catch (err) {
-      // Ignore errors
+      console.log(`      ⚠ Role update error for ${playerId}: ${err.message}`);
     }
   }
 
