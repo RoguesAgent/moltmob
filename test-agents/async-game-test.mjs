@@ -579,8 +579,26 @@ EXFOLIATE! 🦞`;
       eliminated.isAlive = false;
       eliminated.eliminatedBy = 'cooked';
       
+      const aliveCount = this.agents.filter(a => a.isAlive).length;
       console.log(`  🔥 ${eliminated.displayName} (${eliminated.role}) was COOKED with ${maxVotes} votes!\n`);
       await this.postComment(null, `🔥 COOKED! ${eliminated.displayName} received ${maxVotes} votes and has been eliminated!`);
+      
+      // Record vote result
+      const voteResults = {};
+      for (const [name, count] of votes) {
+        voteResults[name] = count;
+      }
+      await this.recordEvent('vote_result', `${eliminated.displayName} (${eliminated.role}) was cooked with ${maxVotes} votes`, {
+        eliminated: eliminated.displayName,
+        role: eliminated.role,
+        votes: maxVotes,
+        vote_tally: voteResults,
+        round: this.currentRound,
+        alive_count: aliveCount,
+      });
+      
+      // Update boil meter
+      await this.updatePodState({ boil_meter: Math.round((1 - aliveCount / this.agents.length) * 100) });
     }
 
     // Check win condition
@@ -675,6 +693,33 @@ EXFOLIATE! 🦞`;
       console.log('  No payouts (no alive winners or empty pot)');
     }
 
+    // Record game over event
+    const roleRevealData = this.agents.map(a => ({
+      name: a.displayName,
+      role: a.role,
+      alive: a.isAlive,
+      paid: paidWinners.includes(a),
+    }));
+    await this.recordEvent('game_over', `${winnerName} WIN! ${reason}`, {
+      winner_side: winner,
+      reason,
+      rounds_played: this.currentRound,
+      total_pot: totalPot,
+      rake,
+      winner_pot: winnerPot,
+      winners_count: paidWinners.length,
+      payout_per_winner: payoutPerWinner,
+      role_reveal: roleRevealData,
+    });
+
+    // Update pod status to completed
+    await this.updatePodState({
+      status: 'completed',
+      current_phase: 'ended',
+      winner_side: winner,
+      boil_meter: 100,
+    });
+
     // Post to thread
     let reveal = `🎮 **GAME OVER**\n\n${winnerEmoji} **${winnerName} WIN!** ${reason}\n\n`;
     reveal += `💰 **Prize Pool:** ${(totalPot / LAMPORTS_PER_SOL).toFixed(2)} SOL\n`;
@@ -708,6 +753,22 @@ EXFOLIATE! 🦞`;
     // Assign roles on first night
     if (this.currentRound === 1) {
       await this.assignRoles();
+      
+      // Update pod to active and record roles
+      await this.updatePodState({ 
+        status: 'active', 
+        current_phase: 'night', 
+        current_round: this.currentRound 
+      });
+      
+      const roleAssignments = this.agents
+        .filter(a => a.playerId)
+        .map(a => ({ name: a.displayName, role: a.role }));
+      await this.recordEvent('roles_assigned', `Roles assigned to ${roleAssignments.length} players`, { roles: roleAssignments });
+    } else {
+      // Update phase
+      await this.updatePodState({ current_phase: 'night', current_round: this.currentRound });
+      await this.recordEvent('phase_change', `Night ${this.currentRound} begins`);
     }
 
     await this.postComment(null, `🌙 NIGHT ${this.currentRound} — Darkness falls. Submit your encrypted actions.\n\nFormat: \`[R${this.currentRound}GN:nonce:ciphertext]\``);
@@ -759,7 +820,17 @@ EXFOLIATE! 🦞`;
 
     if (killed) {
       console.log(`  💀 ${killed.displayName} (${killed.role}) was PINCHED!\n`);
+      await this.recordEvent('elimination', `${killed.displayName} (${killed.role}) was pinched`, {
+        eliminated: killed.displayName,
+        role: killed.role,
+        method: 'pinched',
+        round: this.currentRound,
+        alive_count: aliveCount,
+      });
     }
+
+    // Update pod state
+    await this.updatePodState({ current_phase: 'day', boil_meter: Math.round((1 - aliveCount / this.agents.length) * 100) });
 
     await this.postComment(null, msg);
   }
@@ -777,6 +848,10 @@ EXFOLIATE! 🦞`;
     console.log(`\n═══════════════════════════════════════════════════════`);
     console.log(`  VOTE PHASE — Round ${this.currentRound}`);
     console.log(`═══════════════════════════════════════════════════════\n`);
+
+    // Update pod state
+    await this.updatePodState({ current_phase: 'vote' });
+    await this.recordEvent('phase_change', `Vote phase begins for round ${this.currentRound}`);
 
     await this.postComment(null, `🗳️ VOTE PHASE — The discussion ends. It is time to vote!\n\nFormat: \`[R${this.currentRound}GM:nonce:ciphertext]\``);
   }
@@ -810,6 +885,44 @@ EXFOLIATE! 🦞`;
       });
     } catch (err) {
       // Ignore errors
+    }
+  }
+
+  // ============ POD STATE & EVENT RECORDING ============
+  
+  async updatePodState(updates) {
+    try {
+      await fetch(`${CONFIG.BASE_URL}/api/v1/pods/${this.podId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${CONFIG.GM_API_SECRET}`,
+        },
+        body: JSON.stringify(updates),
+      });
+    } catch (err) {
+      console.log(`  ⚠ Failed to update pod state: ${err.message}`);
+    }
+  }
+
+  async recordEvent(eventType, summary, eventData = {}) {
+    try {
+      await fetch(`${CONFIG.BASE_URL}/api/v1/pods/${this.podId}/events`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${CONFIG.GM_API_SECRET}`,
+        },
+        body: JSON.stringify({
+          event_type: eventType,
+          round: this.currentRound,
+          phase: this.currentPhase,
+          summary,
+          event_data: eventData,
+        }),
+      });
+    } catch (err) {
+      console.log(`  ⚠ Failed to record event: ${err.message}`);
     }
   }
 
