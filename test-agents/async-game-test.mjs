@@ -710,7 +710,7 @@ EXFOLIATE! 🦞`;
       alive: a.isAlive,
       paid: paidWinners.includes(a),
     }));
-    await this.recordEvent('game_over', `${winnerName} WIN! ${reason}`, {
+    await this.recordEvent('game_end', `${winnerName} WIN! ${reason}`, {
       winner_side: winner,
       reason,
       rounds_played: this.currentRound,
