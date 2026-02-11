@@ -123,6 +123,9 @@ export class GameRunner {
   /**
    * Start the game — assign roles, create Moltbook thread, transition to night.
    */
+  /** Get Moltbook thread ID (for recovery) */
+  getGamePostId(): string | null { return this.gamePostId; }
+
   async start(): Promise<GameTransition> {
     if (!canStartGame(this.pod)) {
       throw new Error(`Cannot start game: need ${this.pod.min_players} players, have ${this.pod.players.length}`);
@@ -232,3 +235,103 @@ export class GameRunner {
 
 // Re-export OrchestratorState type for external use
 export type { OrchestratorState } from './orchestrator';
+
+// ── Checkpoint Persistence for Crash Recovery ──
+
+/**
+ * Save orchestrator state checkpoint for crash recovery.
+ * Called automatically after every phase transition.
+ */
+async function saveCheckpoint(
+  podId: string,
+  phase: string,
+  round: number,
+  state: OrchestratorState,
+  gamePostId: string | null
+) {
+  await supabaseAdmin.from('gm_events').insert({
+    pod_id: podId,
+    round,
+    phase,
+    event_type: 'orchestrator_checkpoint',
+    summary: `Checkpoint: ${phase} round ${round}`,
+    details: {
+      orchestrator_state: {
+        moltsRemaining: state.moltsRemaining,
+        shellguardUsed: state.shellguardUsed,
+        immunePlayerIds: Array.from(state.immunePlayerIds),
+        doubleVotePlayerIds: Array.from(state.doubleVotePlayerIds),
+      },
+      game_post_id: gamePostId,
+      checkpoint_at: new Date().toISOString(),
+    },
+  });
+}
+
+/**
+ * Update runner methods to save checkpoints.
+ * Call this after init() to enable checkpoint persistence.
+ */
+export function enableCheckpointPersistence(runner: GameRunner) {
+  const originalStart = runner.start.bind(runner);
+  const originalNight = runner.night.bind(runner);
+  const originalVote = runner.vote.bind(runner);
+  const originalMolt = runner.molt.bind(runner);
+  const originalBoilVote = runner.boilVote.bind(runner);
+
+  // Wrap each method to save checkpoint after execution
+  runner.start = async function() {
+    const transition = await originalStart();
+    const state = (this as any).state;
+    const pod = (this as any).pod;
+    const gamePostId = (this as any).gamePostId;
+    if (state) {
+      await saveCheckpoint(pod.id, 'start', 1, state, gamePostId);
+    }
+    return transition;
+  };
+
+  runner.night = async function(actions) {
+    const transition = await originalNight(actions);
+    const state = (this as any).state;
+    const pod = (this as any).pod;
+    const gamePostId = (this as any).gamePostId;
+    if (state) {
+      await saveCheckpoint(pod.id, pod.current_phase, pod.current_round, state, gamePostId);
+    }
+    return transition;
+  };
+
+  runner.vote = async function(votes) {
+    const transition = await originalVote(votes);
+    const state = (this as any).state;
+    const pod = (this as any).pod;
+    const gamePostId = (this as any).gamePostId;
+    if (state) {
+      await saveCheckpoint(pod.id, pod.current_phase, pod.current_round, state, gamePostId);
+    }
+    return transition;
+  };
+
+  runner.molt = async function(playerId) {
+    const transition = await originalMolt(playerId);
+    const state = (this as any).state;
+    const pod = (this as any).pod;
+    const gamePostId = (this as any).gamePostId;
+    if (state) {
+      await saveCheckpoint(pod.id, pod.current_phase, pod.current_round, state, gamePostId);
+    }
+    return transition;
+  };
+
+  runner.boilVote = async function(votes) {
+    const transition = await originalBoilVote(votes);
+    const state = (this as any).state;
+    const pod = (this as any).pod;
+    const gamePostId = (this as any).gamePostId;
+    if (state) {
+      await saveCheckpoint(pod.id, pod.current_phase, pod.current_round, state, gamePostId);
+    }
+    return transition;
+  };
+}

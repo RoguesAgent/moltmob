@@ -6,6 +6,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { GameRunner, RunnerConfig } from './runner';
 import { OrchestratorState } from './orchestrator';
 import { Pod } from './types';
+import { GmTemplates } from './gm-templates';
 
 export interface RecoveryResult {
   runner: GameRunner | null;
@@ -111,16 +112,19 @@ export async function resumeGame(
     // 7. Create GameRunner with reconstructed state
     const runner = new GameRunner(pod, config);
     
-    // Use internal method to restore state
-    (runner as any).state = state;
-    (runner as any).gamePostId = gamePostId;
+    // Restore state using public setters
+    runner.setState(state);
+    runner.setGamePostId(gamePostId);
 
-    // 8. Post recovery message
+    // 8. Post recovery message using template
     if (gamePostId) {
-      await config.moltbookService.createComment(
-        gamePostId,
-        `🤖 GM recovered at ${new Date().toISOString()}. Continuing from Round ${pod.current_round}, ${pod.current_phase} phase.`
+      const recoveryMsg = GmTemplates.gmRecovery(
+        pod.pod_number,
+        pod.current_round,
+        pod.current_phase,
+        new Date().toISOString()
       );
+      await config.moltbookService.createComment(gamePostId, recoveryMsg.content);
     }
 
     return {
@@ -173,4 +177,18 @@ export async function recoverAllActivePods(config: RunnerConfig): Promise<Recove
   }
 
   return results;
+}
+
+/**
+ * Enhanced GameRunner with auto-save checkpoints
+ * Use this instead of base GameRunner for production
+ */
+export async function createResilientRunner(
+  pod: Pod,
+  config: RunnerConfig
+): Promise<GameRunner> {
+  const { enableCheckpointPersistence } = await import('./runner');
+  const runner = new GameRunner(pod, config);
+  enableCheckpointPersistence(runner);
+  return runner;
 }
