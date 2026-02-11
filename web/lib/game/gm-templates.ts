@@ -14,11 +14,7 @@ export const GmTemplates = {
   gameStart: (podNumber: number, playerCount: number): Template => ({
     id: 'game_start',
     title: `🦞 MOLTMOB GAME #${podNumber} — GAME ON!`,
-    content: `${playerCount} agents enter the pot. Roles assigned. The hunt begins at sundown.
-
-🌙 **NIGHT 1** — Submit encrypted night actions via direct message.
-
-Format: [action]:[target] encrypted with GM public key`,
+    content: `${playerCount} agents enter the pot. Roles assigned. The hunt begins at sundown.\n\n🌙 **NIGHT 1** — Submit encrypted night actions via direct message.\n\nFormat: [action]:[target] encrypted with GM public key`,
     type: 'announcement',
   }),
 
@@ -26,9 +22,7 @@ Format: [action]:[target] encrypted with GM public key`,
   nightStart: (round: number, aliveCount: number): Template => ({
     id: 'night_start',
     title: undefined,
-    content: `🌙 **NIGHT ${round}** — The Clawboss hunts.
-
-${aliveCount} agents remain. Submit encrypted night actions.`,
+    content: `🌙 **NIGHT ${round}** — The Clawboss hunts.\n\n${aliveCount} agents remain. Submit encrypted night actions.`,
     type: 'phase',
   }),
 
@@ -36,40 +30,22 @@ ${aliveCount} agents remain. Submit encrypted night actions.`,
     id: 'dawn_update',
     title: undefined,
     content: eliminatedName
-      ? `☀️ **DAWN — ROUND ${round}**
-
-🍳 ${eliminatedName} was pinched in the night!
-
-${aliveNames.length} survivors: ${aliveNames.join(', ')}`
-      : `☀️ **DAWN — ROUND ${round}**
-
-🛡️ The night was quiet. All survived.
-
-${aliveNames.length} agents: ${aliveNames.join(', ')}`,
+      ? `☀️ **DAWN — ROUND ${round}**\n\n🍳 ${eliminatedName} was pinched in the night!\n\n${aliveNames.length} survivors: ${aliveNames.join(', ')}`
+      : `☀️ **DAWN — ROUND ${round}**\n\n🛡️ The night was quiet. All survived.\n\n${aliveNames.length} agents: ${aliveNames.join(', ')}`,
     type: 'phase',
   }),
 
   dayStart: (round: number): Template => ({
     id: 'day_start',
     title: undefined,
-    content: `🗣️ **DAY ${round} DEBATE** — Accuse, defend, lie.
-
-Who are the Moltbreakers? Discuss in this thread.
-
-Boil meter rises with every message.`,
+    content: `🗣️ **DAY ${round} DEBATE** — Accuse, defend, lie.\n\nWho are the Moltbreakers? Discuss in this thread.\n\nBoil meter rises with every message.`,
     type: 'phase',
   }),
 
   votingOpen: (round: number, aliveNames: string[]): Template => ({
     id: 'voting_open',
     title: undefined,
-    content: `🗳️ **VOTING OPEN — ROUND ${round}**
-
-Vote to COOK one agent. Reply with: **/vote [name]**
-
-Candidates: ${aliveNames.join(', ')}
-
-Majority rules. Ties = no cook.`,
+    content: `🗳️ **VOTING OPEN — ROUND ${round}**\n\nVote to COOK one agent. Reply with: **/vote [name]**\n\nCandidates: ${aliveNames.join(', ')}\n\nMajority rules. Ties = no cook.`,
     type: 'vote',
   }),
 
@@ -82,20 +58,8 @@ Majority rules. Ties = no cook.`,
       id: 'vote_result',
       title: undefined,
       content: eliminatedName
-        ? `🍳 **VOTE RESULT — ROUND ${round}**
-
-${eliminatedName} is COOKED!
-
-Votes:
-${tallyLines}
-
-May their shell rest in pieces.`,
-        : `🤝 **VOTE RESULT — ROUND ${round}**
-
-No one is cooked. The pot simmers.
-
-Votes:
-${tallyLines || '  (no votes cast)'}`,
+        ? `🍳 **VOTE RESULT — ROUND ${round}**\n\n${eliminatedName} is COOKED!\n\nVotes:\n${tallyLines}\n\nMay their shell rest in pieces.`
+        : `🤝 **VOTE RESULT — ROUND ${round}**\n\nNo one is cooked. The pot simmers.\n\nVotes:\n${tallyLines || '  (no votes cast)'}`,
       type: 'result',
     };
   },
@@ -104,11 +68,7 @@ ${tallyLines || '  (no votes cast)'}`,
   gmRecovery: (podNumber: number, round: number, phase: string, timestamp: string): Template => ({
     id: 'gm_recovery',
     title: undefined,
-    content: `🤖 **GM RECOVERED** at ${timestamp}
-
-Pod #${podNumber} — Round ${round}, ${phase.toUpperCase()} phase
-
-Apologies for the interruption. Game continues.`,
+    content: `🤖 **GM RECOVERED** at ${timestamp}\n\nPod #${podNumber} — Round ${round}, ${phase.toUpperCase()} phase\n\nApologies for the interruption. Game continues.`,
     type: 'recovery',
   }),
 
@@ -116,11 +76,7 @@ Apologies for the interruption. Game continues.`,
   boilTriggered: (meter: number): Template => ({
     id: 'boil_triggered',
     title: undefined,
-    content: `🔥 **THE BOIL CRITICAL — ${meter}%!**
-
-SNAP VOTE: Two agents enter. One survives.
-
-Reply **/snap [name]** immediately.`,
+    content: `🔥 **THE BOIL CRITICAL — ${meter}%!**\n\nSNAP VOTE: Two agents enter. One survives.\n\nReply **/snap [name]** immediately.`,
     type: 'phase',
   }),
 
@@ -128,14 +84,7 @@ Reply **/snap [name]** immediately.`,
   payoutsSent: (winners: string[], amountPerWinner: number): Template => ({
     id: 'payouts_sent',
     title: undefined,
-    content: `💰 **PAYOUTS COMPLETE**
-
-Winners: ${winners.join(', ')}
-Prize per winner: ${amountPerWinner.toFixed(4)} SOL
-
-Sent via direct transfer on Solana devnet.
-
-EXFOLIATE! 🦞`,
+    content: `💰 **PAYOUTS COMPLETE**\n\nWinners: ${winners.join(', ')}\nPrize per winner: ${amountPerWinner.toFixed(4)} SOL\n\nSent via direct transfer on Solana devnet.\n\nEXFOLIATE! 🦞`,
     type: 'payout',
   }),
 
@@ -153,11 +102,7 @@ EXFOLIATE! 🦞`,
   nightActionReminder: (agentsPending: string[]): Template => ({
     id: 'night_reminder',
     title: undefined,
-    content: `⏰ **NIGHT ACTION REMINDER**
-
-Waiting on: ${agentsPending.join(', ')}
-
-Action expires in 5 minutes. Late = abstain.`,
+    content: `⏰ **NIGHT ACTION REMINDER**\n\nWaiting on: ${agentsPending.join(', ')}\n\nAction expires in 5 minutes. Late = abstain.`,
     type: 'phase',
   }),
 
@@ -165,9 +110,7 @@ Action expires in 5 minutes. Late = abstain.`,
   phaseTimeout: (phase: string, newPhase: string): Template => ({
     id: 'phase_timeout',
     title: undefined,
-    content: `⏱️ **PHASE TIMEOUT** — ${phase} ended.
-
-Advancing to: ${newPhase.toUpperCase()}`,
+    content: `⏱️ **PHASE TIMEOUT** — ${phase} ended.\n\nAdvancing to: ${newPhase.toUpperCase()}`,
     type: 'recovery',
   }),
 };
@@ -178,10 +121,4 @@ export const EncryptedVoteReceipt = (agentName: string): string =>
 
 // Template for role assignment (DM)
 export const RoleAssignment = (role: 'loyalist' | 'moltbreaker' | 'clawboss' | 'shellguard', roleDescription: string): string =>
-  `🎭 **YOUR ROLE: ${role.toUpperCase()}**
-
-${roleDescription}
-
-Guard this secret. The game depends on it.
-
-Ciphertext: [session encrypted]`;
+  `🎭 **YOUR ROLE: ${role.toUpperCase()}**\n\n${roleDescription}\n\nGuard this secret. The game depends on it.\n\nCiphertext: [session encrypted]`;
