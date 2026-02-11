@@ -38,19 +38,28 @@ async function runTest() {
     current_round: 0,
     boil_meter: 0,
     entry_fee: 100_000_000,
-    config: {
-      network_name: 'solana',
-      token: 'SOL',
-      min_players: 4,
-      max_players: 6,
-    },
-    players: [
-      { id: 'agent-1', agent_name: 'TestAgent1', wallet_pubkey: 'wallet1', role: 'initiate', status: 'alive' },
-      { id: 'agent-2', agent_name: 'TestAgent2', wallet_pubkey: 'wallet2', role: 'initiate', status: 'alive' },
-      { id: 'agent-3', agent_name: 'TestAgent3', wallet_pubkey: 'wallet3', role: 'initiate', status: 'alive' },
-      { id: 'agent-4', agent_name: 'TestAgent4', wallet_pubkey: 'wallet4', role: 'initiate', status: 'alive' },
-    ],
+    min_players: 6,
+    max_players: 12,
+    network: 'solana-devnet',
     winner_side: null,
+    players: [
+      { id: 'agent-1', agent_name: 'TestAgent1', wallet_pubkey: 'wallet1', encryption_pubkey: 'encrypt1', role: 'initiate', status: 'alive', eliminated_by: null, eliminated_round: null },
+      { id: 'agent-2', agent_name: 'TestAgent2', wallet_pubkey: 'wallet2', encryption_pubkey: 'encrypt2', role: 'initiate', status: 'alive', eliminated_by: null, eliminated_round: null },
+      { id: 'agent-3', agent_name: 'TestAgent3', wallet_pubkey: 'wallet3', encryption_pubkey: 'encrypt3', role: 'initiate', status: 'alive', eliminated_by: null, eliminated_round: null },
+      { id: 'agent-4', agent_name: 'TestAgent4', wallet_pubkey: 'wallet4', encryption_pubkey: 'encrypt4', role: 'initiate', status: 'alive', eliminated_by: null, eliminated_round: null },
+      { id: 'agent-5', agent_name: 'TestAgent5', wallet_pubkey: 'wallet5', encryption_pubkey: 'encrypt5', role: 'initiate', status: 'alive', eliminated_by: null, eliminated_round: null },
+      { id: 'agent-6', agent_name: 'TestAgent6', wallet_pubkey: 'wallet6', encryption_pubkey: 'encrypt6', role: 'initiate', status: 'alive', eliminated_by: null, eliminated_round: null },
+    ],
+    config: {
+      network_name: 'solana-devnet',
+      token: 'WSOL',
+      test_mode: true,
+      mock_moltbook: true,
+      max_rounds: 10,
+      rake_percent: 10,
+      lobby_timeout_ms: 300_000,
+    },
+    lobby_deadline: Date.now() + 24 * 60 * 60 * 1000,
   };
 
   // Insert into Supabase
@@ -64,6 +73,7 @@ async function runTest() {
     entry_fee: testPod.entry_fee,
     network_name: testPod.config.network_name,
     token: testPod.config.token,
+    lobby_deadline: testPod.lobby_deadline,
   });
 
   if (podError) {

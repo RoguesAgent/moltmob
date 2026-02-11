@@ -3,7 +3,7 @@
  * Validates that game state is correctly persisted and recoverable
  */
 
-import { describe, it, expect, beforeEach, afterEach } from '@jest/globals';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { GameRunner } from '@/lib/game/runner';
 import { resumeGame, recoverAllActivePods } from '@/lib/game/runner-resume';
 import { MockMoltbookService } from '@/lib/game/moltbook-service';
