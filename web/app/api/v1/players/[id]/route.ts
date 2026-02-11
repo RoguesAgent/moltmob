@@ -13,11 +13,17 @@ export async function PATCH(
   if (agentOrError instanceof NextResponse) return agentOrError;
 
   const body = await req.json();
-  const { role, is_alive } = body;
+  const { role, is_alive, status, eliminated_by, eliminated_round } = body;
 
   const updates: Record<string, unknown> = {};
   if (role !== undefined) updates.role = role;
-  if (is_alive !== undefined) updates.is_alive = is_alive;
+  // Handle is_alive → status conversion
+  if (is_alive !== undefined) {
+    updates.status = is_alive ? 'alive' : 'eliminated';
+  }
+  if (status !== undefined) updates.status = status;
+  if (eliminated_by !== undefined) updates.eliminated_by = eliminated_by;
+  if (eliminated_round !== undefined) updates.eliminated_round = eliminated_round;
 
   if (Object.keys(updates).length === 0) {
     return errorResponse('No valid fields to update', 400);

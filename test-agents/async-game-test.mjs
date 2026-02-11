@@ -441,7 +441,7 @@ EXFOLIATE! 🦞`;
         
         // Update player status in database
         if (killed.playerId) {
-          await this.updatePlayerStatus(killed.playerId, false);
+          await this.updatePlayerStatus(killed.playerId, false, 'pinched');
         }
         
         // Record elimination immediately (in case game ends)
@@ -596,7 +596,7 @@ EXFOLIATE! 🦞`;
       
       // Update player status in database
       if (eliminated.playerId) {
-        await this.updatePlayerStatus(eliminated.playerId, false);
+        await this.updatePlayerStatus(eliminated.playerId, false, 'cooked');
       }
       
       const aliveCount = this.agents.filter(a => a.isAlive).length;
@@ -961,7 +961,7 @@ EXFOLIATE! 🦞`;
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${CONFIG.GM_API_SECRET}`,
         },
-        body: JSON.stringify({ role, is_alive: true }),
+        body: JSON.stringify({ role }),
       });
       if (!res.ok) {
         const text = await res.text();
@@ -972,15 +972,22 @@ EXFOLIATE! 🦞`;
     }
   }
 
-  async updatePlayerStatus(playerId, isAlive) {
+  async updatePlayerStatus(playerId, isAlive, eliminatedBy = null) {
     try {
+      const body = { 
+        status: isAlive ? 'alive' : 'eliminated',
+      };
+      if (!isAlive && eliminatedBy) {
+        body.eliminated_by = eliminatedBy;
+        body.eliminated_round = this.currentRound;
+      }
       await fetch(`${CONFIG.BASE_URL}/api/v1/players/${playerId}`, {
         method: 'PATCH',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${CONFIG.GM_API_SECRET}`,
         },
-        body: JSON.stringify({ is_alive: isAlive }),
+        body: JSON.stringify(body),
       });
     } catch (err) {
       // Ignore errors
