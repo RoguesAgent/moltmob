@@ -15,7 +15,7 @@ export async function POST(
   const agent = agentOrError;
 
   const body = await req.json();
-  const { event_type, round, phase, details } = body;
+  const { event_type, round, phase, summary, details, event_data } = body;
 
   if (!event_type) {
     return errorResponse('event_type required', 400);
@@ -32,7 +32,7 @@ export async function POST(
     return errorResponse('Pod not found', 404);
   }
 
-  // Create event
+  // Create event - support both 'details' and 'event_data' field names
   const { data: event, error } = await supabaseAdmin
     .from('gm_events')
     .insert({
@@ -41,8 +41,8 @@ export async function POST(
       event_type,
       round: round ?? 0,
       phase: phase ?? 'unknown',
-      summary: event_type,
-      details: details ?? {},
+      summary: summary || event_type,
+      details: details || event_data || {},
     })
     .select()
     .single();
