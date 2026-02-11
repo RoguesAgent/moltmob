@@ -100,8 +100,55 @@ export class MockMoltbookService implements MoltbookService {
 }
 
 /**
+ * Retry wrapper with exponential backoff for rate-limited requests.
+ * Respects Moltbook's retry_after_seconds header.
+ */
+async function fetchWithRetry(
+  url: string,
+  options: RequestInit,
+  maxRetries = 3
+): Promise<Response> {
+  let lastError: Error | null = null;
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      const res = await fetch(url, options);
+
+      // Check for rate limiting
+      if (res.status === 429) {
+        const data = await res.json().catch(() => ({}));
+        const retryAfter = data.retry_after_seconds || Math.pow(2, attempt);
+        console.log(`[Moltbook] Rate limited. Retrying after ${retryAfter}s... (attempt ${attempt + 1}/${maxRetries})`);
+        await new Promise(resolve => setTimeout(resolve, retryAfter * 1000));
+        continue; // Retry this attempt
+      }
+
+      // Check for other errors that might benefit from retry
+      if (res.status >= 500 && attempt < maxRetries - 1) {
+        const delay = Math.pow(2, attempt) * 1000; // Exponential backoff: 1s, 2s, 4s
+        console.log(`[Moltbook] Server error ${res.status}. Retrying after ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+
+      return res;
+    } catch (err) {
+      lastError = err instanceof Error ? err : new Error(String(err));
+      if (attempt < maxRetries - 1) {
+        const delay = Math.pow(2, attempt) * 1000;
+        console.log(`[Moltbook] Network error. Retrying after ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+  }
+
+  throw lastError || new Error('Max retries exceeded');
+}
+
+/**
  * Live implementation — writes to real Moltbook API + shadows to local state.
  * Falls back gracefully if Moltbook is down (logs error, continues with local state).
+ * Includes retry logic with exponential backoff for rate limits.
  */
 export class LiveMoltbookService implements MoltbookService {
   private config: MoltbookServiceConfig;
@@ -124,7 +171,7 @@ export class LiveMoltbookService implements MoltbookService {
     const local = await this.mock.createPost(title, content);
 
     try {
-      const res = await fetch(`${this.config.apiBaseUrl}/posts`, {
+      const res = await fetchWithRetry(`${this.config.apiBaseUrl}/posts`, {
         method: 'POST',
         headers: this.headers,
         body: JSON.stringify({
@@ -158,7 +205,7 @@ export class LiveMoltbookService implements MoltbookService {
     const local = await this.mock.createComment(postId, content, parentId);
 
     try {
-      const res = await fetch(`${this.config.apiBaseUrl}/posts/${postId}/comments`, {
+      const res = await fetchWithRetry(`${this.config.apiBaseUrl}/posts/${postId}/comments`, {
         method: 'POST',
         headers: this.headers,
         body: JSON.stringify({
@@ -188,7 +235,7 @@ export class LiveMoltbookService implements MoltbookService {
 
   async pinPost(postId: string): Promise<void> {
     try {
-      await fetch(`${this.config.apiBaseUrl}/posts/${postId}/pin`, {
+      await fetchWithRetry(`${this.config.apiBaseUrl}/posts/${postId}/pin`, {
         method: 'POST',
         headers: this.headers,
       });
@@ -204,6 +251,10 @@ export class LiveMoltbookService implements MoltbookService {
         results.push(await this.createPost(post.title, post.content));
       } else {
         results.push(await this.createComment(gamePostId, post.content, post.parent_id));
+        // Rate limit protection: add delay between sequential comments
+        if (posts.length > 1) {
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
       }
     }
     return results;
