@@ -620,6 +620,14 @@ EXFOLIATE! 🦞`;
 
     console.log(`  ${winnerEmoji} ${winnerName} WIN! ${reason}\n`);
 
+    // Determine winning team and alive winners
+    const isMoltbreakersWin = winner === 'clawboss';
+    const winningTeam = this.agents.filter(a => {
+      const isMoltbreaker = a.role === 'clawboss' || a.role === 'krill';
+      return isMoltbreakersWin ? isMoltbreaker : !isMoltbreaker;
+    });
+    const paidWinners = winningTeam.filter(a => a.isAlive && a.playerId); // Only alive winners who joined
+
     // Role reveal
     console.log('  Role Reveal:');
     for (const agent of this.agents) {
@@ -628,12 +636,55 @@ EXFOLIATE! 🦞`;
       console.log(`    ${status} ${agent.displayName}: ${emoji} ${agent.role}`);
     }
 
+    // Calculate payouts
+    const joinedAgents = this.agents.filter(a => a.playerId);
+    const totalPot = CONFIG.ENTRY_FEE * joinedAgents.length;
+    const rake = Math.floor(totalPot * 0.05); // 5% rake
+    const winnerPot = totalPot - rake;
+    const payoutPerWinner = paidWinners.length > 0 ? Math.floor(winnerPot / paidWinners.length) : 0;
+
+    console.log('\n═══════════════════════════════════════════════════════');
+    console.log('  PAYOUTS');
+    console.log('═══════════════════════════════════════════════════════\n');
+    console.log(`  Total pot:    ${(totalPot / LAMPORTS_PER_SOL).toFixed(4)} SOL`);
+    console.log(`  Rake (5%):    ${(rake / LAMPORTS_PER_SOL).toFixed(4)} SOL`);
+    console.log(`  Winner pot:   ${(winnerPot / LAMPORTS_PER_SOL).toFixed(4)} SOL`);
+    console.log(`  Winners:      ${paidWinners.length}`);
+    console.log(`  Per winner:   ${(payoutPerWinner / LAMPORTS_PER_SOL).toFixed(4)} SOL\n`);
+
+    // Pay out alive winners
+    if (paidWinners.length > 0 && payoutPerWinner > 0) {
+      const connection = new Connection(CONFIG.SOLANA_RPC, 'confirmed');
+      
+      for (const winner of paidWinners) {
+        try {
+          const tx = new Transaction().add(
+            SystemProgram.transfer({
+              fromPubkey: this.gmKeypair.publicKey,
+              toPubkey: new PublicKey(winner.wallet),
+              lamports: payoutPerWinner,
+            })
+          );
+          const txSig = await sendAndConfirmTransaction(connection, tx, [this.gmKeypair]);
+          console.log(`  ✓ ${winner.displayName}: ${(payoutPerWinner / LAMPORTS_PER_SOL).toFixed(4)} SOL (tx: ${txSig.slice(0, 12)}...)`);
+        } catch (err) {
+          console.log(`  ✗ ${winner.displayName}: FAILED - ${err.message}`);
+        }
+      }
+    } else {
+      console.log('  No payouts (no alive winners or empty pot)');
+    }
+
     // Post to thread
-    let reveal = `🎮 **GAME OVER**\n\n${winnerEmoji} **${winnerName} WIN!** ${reason}\n\n🎭 Role Reveal:\n`;
+    let reveal = `🎮 **GAME OVER**\n\n${winnerEmoji} **${winnerName} WIN!** ${reason}\n\n`;
+    reveal += `💰 **Prize Pool:** ${(totalPot / LAMPORTS_PER_SOL).toFixed(2)} SOL\n`;
+    reveal += `🏆 **Winners Paid:** ${paidWinners.length} (${(payoutPerWinner / LAMPORTS_PER_SOL).toFixed(4)} SOL each)\n\n`;
+    reveal += `🎭 Role Reveal:\n`;
     for (const agent of this.agents) {
       const emoji = agent.role === 'clawboss' ? '🦞' : agent.role === 'krill' ? '🦐' : '🔵';
       const status = agent.isAlive ? '✓' : '☠️';
-      reveal += `${status} ${agent.displayName}: ${emoji} ${agent.role}\n`;
+      const paid = paidWinners.includes(agent) ? ' 💰' : '';
+      reveal += `${status} ${agent.displayName}: ${emoji} ${agent.role}${paid}\n`;
     }
     await this.postComment(null, reveal);
   }
