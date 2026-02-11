@@ -92,6 +92,8 @@ export default function GameDetailPage() {
   const [moltbookPost, setMoltbookPost] = useState<MoltbookPost | null>(null);
   const [moltbookComments, setMoltbookComments] = useState<MoltbookComment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [recovering, setRecovering] = useState(false);
+  const [recoverMessage, setRecoverMessage] = useState('');
 
   useEffect(() => {
     const fetchData = async () => {
@@ -123,6 +125,34 @@ export default function GameDetailPage() {
     };
     fetchData();
   }, [id]);
+
+  async function handleRecover() {
+    setRecovering(true);
+    setRecoverMessage('');
+    try {
+      const res = await adminFetch(`/api/gm/pods/${id}/control`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'recover' }),
+      });
+      const data = await res.json();
+      if (data.recovered) {
+        setRecoverMessage(`✅ Recovered! Game post ID: ${data.gamePostId}`);
+        // Refresh pod data
+        const podRes = await adminFetch(`/api/admin/pods/${id}`);
+        if (podRes.ok) {
+          const podData = await podRes.json();
+          setPod(podData.pod ?? podData);
+        }
+      } else {
+        setRecoverMessage(`❌ Failed: ${data.error}`);
+      }
+    } catch (err) {
+      setRecoverMessage(`❌ Error: ${err}`);
+    } finally {
+      setRecovering(false);
+    }
+  }
 
   if (loading) return <div className="min-h-screen bg-gray-900 text-white p-8">Loading...</div>;
   if (!pod) return <div className="min-h-screen bg-gray-900 text-white p-8">Pod not found</div>;
