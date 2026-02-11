@@ -438,6 +438,16 @@ EXFOLIATE! 🦞`;
       if (killed) {
         killed.isAlive = false;
         killed.eliminatedBy = 'pinched';
+        
+        // Record elimination immediately (in case game ends)
+        const aliveCount = this.agents.filter(a => a.isAlive).length;
+        await this.recordEvent('elimination', `${killed.displayName} (${killed.role}) was pinched by the Clawboss`, {
+          eliminated: killed.displayName,
+          role: killed.role,
+          method: 'pinched',
+          round: this.currentRound,
+          alive_count: aliveCount,
+        });
       }
     }
 
@@ -820,13 +830,7 @@ EXFOLIATE! 🦞`;
 
     if (killed) {
       console.log(`  💀 ${killed.displayName} (${killed.role}) was PINCHED!\n`);
-      await this.recordEvent('elimination', `${killed.displayName} (${killed.role}) was pinched`, {
-        eliminated: killed.displayName,
-        role: killed.role,
-        method: 'pinched',
-        round: this.currentRound,
-        alive_count: aliveCount,
-      });
+      // Note: elimination event already recorded in resolveNightPhase
     }
 
     // Update pod state
