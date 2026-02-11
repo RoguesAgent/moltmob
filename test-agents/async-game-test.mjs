@@ -439,6 +439,11 @@ EXFOLIATE! 🦞`;
         killed.isAlive = false;
         killed.eliminatedBy = 'pinched';
         
+        // Update player status in database
+        if (killed.playerId) {
+          await this.updatePlayerStatus(killed.playerId, false);
+        }
+        
         // Record elimination immediately (in case game ends)
         const aliveCount = this.agents.filter(a => a.isAlive).length;
         await this.recordEvent('elimination', `${killed.displayName} (${killed.role}) was pinched by the Clawboss`, {
@@ -589,6 +594,11 @@ EXFOLIATE! 🦞`;
       eliminated.isAlive = false;
       eliminated.eliminatedBy = 'cooked';
       
+      // Update player status in database
+      if (eliminated.playerId) {
+        await this.updatePlayerStatus(eliminated.playerId, false);
+      }
+      
       const aliveCount = this.agents.filter(a => a.isAlive).length;
       console.log(`  🔥 ${eliminated.displayName} (${eliminated.role}) was COOKED with ${maxVotes} votes!\n`);
       await this.postComment(null, `🔥 COOKED! ${eliminated.displayName} received ${maxVotes} votes and has been eliminated!`);
@@ -695,10 +705,16 @@ EXFOLIATE! 🦞`;
           );
           const txSig = await sendAndConfirmTransaction(connection, tx, [this.gmKeypair]);
           console.log(`  ✓ ${winner.displayName}: ${(payoutPerWinner / LAMPORTS_PER_SOL).toFixed(4)} SOL (tx: ${txSig.slice(0, 12)}...)`);
+          
+          // Record payout transaction in database
+          await this.recordTransaction('payout', winner.wallet, payoutPerWinner, txSig);
         } catch (err) {
           console.log(`  ✗ ${winner.displayName}: FAILED - ${err.message}`);
         }
       }
+      
+      // Record rake transaction (rake stays with GM)
+      await this.recordTransaction('rake', this.gmKeypair.publicKey.toBase58(), rake, null);
     } else {
       console.log('  No payouts (no alive winners or empty pot)');
     }
@@ -806,6 +822,11 @@ EXFOLIATE! 🦞`;
       
       const emoji = roles[i] === 'clawboss' ? '🦞' : roles[i] === 'krill' ? '🦐' : '🔵';
       console.log(`    ${alive[i].displayName} → ${emoji} ${roles[i]}`);
+      
+      // Update player role in database
+      if (alive[i].playerId) {
+        await this.updatePlayerRole(alive[i].playerId, roles[i]);
+      }
     }
     console.log('');
   }
@@ -927,6 +948,56 @@ EXFOLIATE! 🦞`;
       });
     } catch (err) {
       console.log(`  ⚠ Failed to record event: ${err.message}`);
+    }
+  }
+
+  async updatePlayerRole(playerId, role) {
+    try {
+      await fetch(`${CONFIG.BASE_URL}/api/v1/players/${playerId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${CONFIG.GM_API_SECRET}`,
+        },
+        body: JSON.stringify({ role, is_alive: true }),
+      });
+    } catch (err) {
+      // Ignore errors
+    }
+  }
+
+  async updatePlayerStatus(playerId, isAlive) {
+    try {
+      await fetch(`${CONFIG.BASE_URL}/api/v1/players/${playerId}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${CONFIG.GM_API_SECRET}`,
+        },
+        body: JSON.stringify({ is_alive: isAlive }),
+      });
+    } catch (err) {
+      // Ignore errors
+    }
+  }
+
+  async recordTransaction(txType, wallet, amountLamports, txSignature) {
+    try {
+      await fetch(`${CONFIG.BASE_URL}/api/v1/pods/${this.podId}/transactions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${CONFIG.GM_API_SECRET}`,
+        },
+        body: JSON.stringify({
+          tx_type: txType,
+          wallet,
+          amount_lamports: amountLamports,
+          tx_signature: txSignature,
+        }),
+      });
+    } catch (err) {
+      // Ignore errors
     }
   }
 

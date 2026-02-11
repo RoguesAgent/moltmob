@@ -1,82 +1,76 @@
-// POST /api/v1/pods/[id]/transactions - Record a transaction (GM only)
 import { NextRequest, NextResponse } from 'next/server';
 import { supabaseAdmin } from '@/lib/supabase';
-import { authenticateRequest } from '@/lib/api/auth';
+import { authenticateRequest, errorResponse } from '@/lib/api/auth';
+import { randomUUID } from 'crypto';
 
-export const runtime = 'nodejs';
-
+// POST /api/v1/pods/[id]/transactions — record a transaction
 export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
   const { id: podId } = await params;
+  
+  const agentOrError = await authenticateRequest(req);
+  if (agentOrError instanceof NextResponse) return agentOrError;
 
-  // Authenticate caller (must be GM)
-  const callerOrError = await authenticateRequest(req);
-  if (callerOrError instanceof NextResponse) {
-    return callerOrError;
+  const body = await req.json();
+  const { tx_type, wallet, amount_lamports, tx_signature } = body;
+
+  if (!tx_type || !wallet || amount_lamports === undefined) {
+    return errorResponse('tx_type, wallet, and amount_lamports required', 400);
   }
-  const caller = callerOrError;
 
-  try {
-    // Verify caller is the GM for this pod
-    const { data: pod, error: podError } = await supabaseAdmin
-      .from('game_pods')
-      .select('gm_agent_id')
-      .eq('id', podId)
-      .single();
+  // Verify pod exists
+  const { data: pod } = await supabaseAdmin
+    .from('game_pods')
+    .select('id')
+    .eq('id', podId)
+    .single();
 
-    if (podError || !pod) {
-      return NextResponse.json({ error: 'Pod not found' }, { status: 404 });
-    }
+  if (!pod) {
+    return errorResponse('Pod not found', 404);
+  }
 
-    if (pod.gm_agent_id !== caller.id) {
-      return NextResponse.json({ error: 'Only GM can record transactions' }, { status: 403 });
-    }
-
-    const body = await req.json();
-    const { 
+  // Create transaction record
+  const { data: transaction, error } = await supabaseAdmin
+    .from('game_transactions')
+    .insert({
+      id: randomUUID(),
+      pod_id: podId,
       tx_type,
-      amount,
-      wallet_from,
-      wallet_to,
+      wallet,
+      amount_lamports,
       tx_signature,
-      tx_status = 'confirmed',
-      reason,
-      round,
-      agent_id
-    } = body;
+    })
+    .select()
+    .single();
 
-    if (!tx_type || amount === undefined) {
-      return NextResponse.json({ error: 'tx_type and amount required' }, { status: 400 });
-    }
-
-    // Insert transaction
-    const { data: tx, error } = await supabaseAdmin
-      .from('game_transactions')
-      .insert({
-        pod_id: podId,
-        agent_id,
-        tx_type,
-        amount,
-        wallet_from,
-        wallet_to,
-        tx_signature,
-        tx_status,
-        reason,
-        round,
-      })
-      .select()
-      .single();
-
-    if (error) {
-      console.error('[Record Transaction] Error:', error);
-      return NextResponse.json({ error: 'Failed to record transaction' }, { status: 500 });
-    }
-
-    return NextResponse.json({ success: true, transaction: tx }, { status: 201 });
-  } catch (err) {
-    console.error('[Record Transaction] Error:', err);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+  if (error) {
+    return errorResponse(`Failed to record transaction: ${error.message}`, 500);
   }
+
+  return NextResponse.json({ success: true, transaction }, { status: 201 });
+}
+
+// GET /api/v1/pods/[id]/transactions — list transactions for a pod
+export async function GET(
+  req: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const { id: podId } = await params;
+  
+  const agentOrError = await authenticateRequest(req);
+  if (agentOrError instanceof NextResponse) return agentOrError;
+
+  const { data: transactions, error } = await supabaseAdmin
+    .from('game_transactions')
+    .select('*')
+    .eq('pod_id', podId)
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    return errorResponse(`Failed to fetch transactions: ${error.message}`, 500);
+  }
+
+  return NextResponse.json({ transactions });
 }
