@@ -16,6 +16,7 @@ import {
   GameTransition,
   NightActionInput,
   VoteInput,
+  OrchestratorState,
 } from './orchestrator';
 import { createPod, canStartGame } from './lobby';
 import { MoltbookService, MockMoltbookService } from './moltbook-service';
@@ -125,6 +126,21 @@ export class GameRunner {
    */
   /** Get Moltbook thread ID (for recovery) */
   getGamePostId(): string | null { return this.gamePostId; }
+
+  /** Set orchestrator state (for crash recovery) */
+  setState(state: OrchestratorState): void {
+    this.state = state;
+  }
+
+  /** Set Moltbook thread ID (for crash recovery) */
+  setGamePostId(id: string | null): void {
+    this.gamePostId = id;
+  }
+
+  /** Set pod state (for crash recovery) */
+  setPod(pod: Pod): void {
+    this.pod = pod;
+  }
 
   async start(): Promise<GameTransition> {
     if (!canStartGame(this.pod)) {
@@ -249,7 +265,7 @@ async function saveCheckpoint(
   state: OrchestratorState,
   gamePostId: string | null
 ) {
-  await supabaseAdmin.from('gm_events').insert({
+  const { error } = await supabaseAdmin.from('gm_events').insert({
     pod_id: podId,
     round,
     phase,
@@ -266,6 +282,10 @@ async function saveCheckpoint(
       checkpoint_at: new Date().toISOString(),
     },
   });
+  
+  if (error) {
+    console.error('[saveCheckpoint] Failed to save checkpoint:', error);
+  }
 }
 
 /**

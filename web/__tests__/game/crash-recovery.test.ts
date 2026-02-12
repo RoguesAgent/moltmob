@@ -10,17 +10,45 @@ import { MockMoltbookService } from '@/lib/game/moltbook-service';
 import { supabaseAdmin } from '@/lib/supabase';
 import type { Pod } from '@/lib/game/types';
 
+// Generate a random UUID
+function randomUUID(): string {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) => {
+    const r = Math.random() * 16 | 0;
+    const v = c === 'x' ? r : (r & 0x3 | 0x8);
+    return v.toString(16);
+  });
+}
+
 describe('Crash Recovery', () => {
   let mockMoltbook: MockMoltbookService;
   let testPod: Pod;
-  const config = { moltbookService: mockMoltbook };
+  let testPodId: string;
+  let testAgentIds: string[];
 
   beforeEach(async () => {
     mockMoltbook = new MockMoltbookService();
     
+    // Generate proper UUIDs
+    testPodId = randomUUID();
+    testAgentIds = Array.from({ length: 6 }, () => randomUUID());
+    
+    // Create test agents first (required by foreign key)
+    for (let i = 0; i < testAgentIds.length; i++) {
+      const { error: agentError } = await supabaseAdmin.from('agents').upsert({
+        id: testAgentIds[i],
+        name: `TestAgent${Date.now()}_${i}`, // Unique name
+        api_key: `test-api-key-${testAgentIds[i]}`, // Required field
+        wallet_pubkey: `wallet${i + 1}`,
+      }, { onConflict: 'id' });
+      
+      if (agentError) {
+        console.error('Failed to insert test agent:', agentError);
+      }
+    }
+
     // Create a test pod in DB with correct Pod structure
     testPod = {
-      id: `test-pod-${Date.now()}`,
+      id: testPodId,
       pod_number: 999,
       status: 'lobby',
       current_phase: 'lobby',
@@ -41,18 +69,20 @@ describe('Crash Recovery', () => {
         rake_percent: 10,
         lobby_timeout_ms: 300_000,
       },
-      players: [
-        { id: 'agent-1', agent_name: 'TestAgent1', wallet_pubkey: 'wallet1', encryption_pubkey: 'enc1', role: 'initiate', status: 'alive', eliminated_by: null, eliminated_round: null },
-        { id: 'agent-2', agent_name: 'TestAgent2', wallet_pubkey: 'wallet2', encryption_pubkey: 'enc2', role: 'initiate', status: 'alive', eliminated_by: null, eliminated_round: null },
-        { id: 'agent-3', agent_name: 'TestAgent3', wallet_pubkey: 'wallet3', encryption_pubkey: 'enc3', role: 'initiate', status: 'alive', eliminated_by: null, eliminated_round: null },
-        { id: 'agent-4', agent_name: 'TestAgent4', wallet_pubkey: 'wallet4', encryption_pubkey: 'enc4', role: 'initiate', status: 'alive', eliminated_by: null, eliminated_round: null },
-        { id: 'agent-5', agent_name: 'TestAgent5', wallet_pubkey: 'wallet5', encryption_pubkey: 'enc5', role: 'initiate', status: 'alive', eliminated_by: null, eliminated_round: null },
-        { id: 'agent-6', agent_name: 'TestAgent6', wallet_pubkey: 'wallet6', encryption_pubkey: 'enc6', role: 'initiate', status: 'alive', eliminated_by: null, eliminated_round: null },
-      ],
+      players: testAgentIds.map((id, i) => ({
+        id,
+        agent_name: `TestAgent${i + 1}`,
+        wallet_pubkey: `wallet${i + 1}`,
+        encryption_pubkey: `enc${i + 1}`,
+        role: 'initiate' as const,
+        status: 'alive' as const,
+        eliminated_by: null,
+        eliminated_round: null,
+      })),
     };
 
-    // Insert into Supabase
-    await supabaseAdmin.from('game_pods').insert({
+    // Insert pod into Supabase
+    const { error: podError } = await supabaseAdmin.from('game_pods').insert({
       id: testPod.id,
       pod_number: testPod.pod_number,
       status: testPod.status,
@@ -64,25 +94,41 @@ describe('Crash Recovery', () => {
       max_players: testPod.max_players,
       network_name: testPod.config.network_name,
       token: testPod.config.token,
-      lobby_deadline: testPod.lobby_deadline,
     });
+    
+    if (podError) {
+      console.error('Failed to insert test pod:', podError);
+    }
 
+    // Insert players
     for (const player of testPod.players) {
-      await supabaseAdmin.from('game_players').insert({
+      const { error: playerError } = await supabaseAdmin.from('game_players').insert({
         pod_id: testPod.id,
         agent_id: player.id,
+        agent_name: player.agent_name,
+        wallet_pubkey: player.wallet_pubkey,
+        encryption_pubkey: player.encryption_pubkey,
         role: player.role,
         status: player.status,
       });
+      
+      if (playerError) {
+        console.error('Failed to insert test player:', playerError);
+      }
     }
   });
 
   afterEach(async () => {
-    // Clean up test data
+    // Clean up test data (order matters due to foreign keys)
     await supabaseAdmin.from('gm_events').delete().eq('pod_id', testPod.id);
     await supabaseAdmin.from('game_transactions').delete().eq('pod_id', testPod.id);
     await supabaseAdmin.from('game_players').delete().eq('pod_id', testPod.id);
     await supabaseAdmin.from('game_pods').delete().eq('id', testPod.id);
+    
+    // Clean up test agents
+    for (const agentId of testAgentIds) {
+      await supabaseAdmin.from('agents').delete().eq('id', agentId);
+    }
   });
 
   it('should create a checkpoint after starting game', async () => {
@@ -93,12 +139,19 @@ describe('Crash Recovery', () => {
     expect(transition.pod.status).toBe('active');
     expect(transition.pod.current_phase).toBe('night');
 
+    // Wait for checkpoint to be written (async)
+    await new Promise(resolve => setTimeout(resolve, 500));
+
     // Check checkpoint was created
-    const { data: checkpoints } = await supabaseAdmin
+    const { data: checkpoints, error } = await supabaseAdmin
       .from('gm_events')
       .select('*')
       .eq('pod_id', testPod.id)
       .eq('event_type', 'orchestrator_checkpoint');
+
+    if (error) {
+      console.error('Checkpoint query error:', error);
+    }
 
     expect(checkpoints?.length).toBeGreaterThan(0);
     expect(checkpoints![0].details.orchestrator_state).toBeDefined();
@@ -116,6 +169,11 @@ describe('Crash Recovery', () => {
     // Simulate crash: create new runner with same pod ID
     const result = await resumeGame(testPod.id, { moltbookService: mockMoltbook });
 
+    // Log error for debugging
+    if (!result.recovered) {
+      console.error('Recovery failed:', result.error);
+    }
+
     expect(result.recovered).toBe(true);
     expect(result.runner).not.toBeNull();
     expect(result.state).not.toBeNull();
@@ -127,12 +185,22 @@ describe('Crash Recovery', () => {
     expect(recoveredPod.current_round).toBe(1);
   });
 
-  it('should return recoverable=false if no checkpoint exists', async () => {
+  it('should recover with default state if no checkpoint exists', async () => {
     // Don't start the game, so no checkpoint exists
+    // Recovery should still work - it uses default state
     const result = await resumeGame(testPod.id, { moltbookService: mockMoltbook });
 
+    expect(result.recovered).toBe(true);
+    expect(result.runner).not.toBeNull();
+    // State should be default (no checkpoint to restore from)
+    expect(result.state).toBeDefined();
+  });
+
+  it('should return recoverable=false if pod does not exist', async () => {
+    const result = await resumeGame('nonexistent-pod-id', { moltbookService: mockMoltbook });
+
     expect(result.recovered).toBe(false);
-    expect(result.error).toBeDefined();
+    expect(result.error).toBe('Pod not found');
   });
 
   it('should recover active pods via recoverAllActivePods', async () => {

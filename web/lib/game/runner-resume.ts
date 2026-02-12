@@ -47,26 +47,30 @@ export async function resumeGame(
     }
 
     // 3. Load orchestrator state from gm_events (last checkpoint)
-    const { data: events, error: eventsError } = await supabaseAdmin
+    // Use maybeSingle() to avoid errors when no checkpoint exists
+    const { data: checkpointData } = await supabaseAdmin
       .from('gm_events')
       .select('details')
       .eq('pod_id', podId)
       .eq('event_type', 'orchestrator_checkpoint')
       .order('created_at', { ascending: false })
-      .limit(1)
-      .single();
+      .limit(1);
 
-    // 4. Load gamePostId from gm_events
-    const { data: gameStartEvent } = await supabaseAdmin
+    const events = checkpointData && checkpointData.length > 0 ? checkpointData[0] : null;
+
+    // 4. Load gamePostId from gm_events (also handle missing gracefully)
+    const { data: gameStartData } = await supabaseAdmin
       .from('gm_events')
       .select('details')
       .eq('pod_id', podId)
       .eq('event_type', 'game_start')
-      .single();
+      .limit(1);
+
+    const gameStartEvent = gameStartData && gameStartData.length > 0 ? gameStartData[0] : null;
 
     const gamePostId = gameStartEvent?.details?.game_post_id || null;
 
-    // 5. Reconstruct Pod object
+    // 5. Reconstruct Pod object with all required fields
     const pod: Pod = {
       id: podData.id,
       pod_number: podData.pod_number,
@@ -75,22 +79,30 @@ export async function resumeGame(
       current_round: podData.current_round,
       boil_meter: podData.boil_meter,
       entry_fee: podData.entry_fee,
+      min_players: podData.min_players || 6,
+      max_players: podData.max_players || 12,
+      network: podData.network_name || 'solana-devnet',
+      lobby_deadline: podData.lobby_deadline || Date.now() + 24 * 60 * 60 * 1000,
+      winner_side: podData.winner_side,
       config: {
-        network_name: podData.network_name,
-        token: podData.token,
-        min_players: podData.min_players || 6,
-        max_players: podData.max_players || 12,
+        network_name: podData.network_name || 'solana-devnet',
+        token: podData.token || 'WSOL',
+        test_mode: podData.test_mode ?? true,
+        mock_moltbook: podData.mock_moltbook ?? true,
+        max_rounds: podData.max_rounds ?? 10,
+        rake_percent: podData.rake_percent ?? 10,
+        lobby_timeout_ms: podData.lobby_timeout_ms ?? 300_000,
       },
       players: (playersData || []).map(p => ({
         id: p.agent_id,
-        agent_name: p.agent_name,
-        wallet_pubkey: p.wallet_pubkey,
+        agent_name: p.agent_name || `Agent-${p.agent_id.slice(0, 8)}`,
+        wallet_pubkey: p.wallet_pubkey || '',
+        encryption_pubkey: p.encryption_pubkey || '',
         role: p.role,
         status: p.status,
         eliminated_by: p.eliminated_by,
         eliminated_round: p.eliminated_round,
       })),
-      winner_side: podData.winner_side,
     };
 
     // 6. Reconstruct state
@@ -135,6 +147,7 @@ export async function resumeGame(
     };
 
   } catch (error) {
+    console.error('[resumeGame] Caught error:', error);
     return {
       runner: null,
       state: null,
