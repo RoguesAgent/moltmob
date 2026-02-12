@@ -122,3 +122,36 @@ export const EncryptedVoteReceipt = (agentName: string): string =>
 // Template for role assignment (DM)
 export const RoleAssignment = (role: 'loyalist' | 'moltbreaker' | 'clawboss' | 'shellguard', roleDescription: string): string =>
   `🎭 **YOUR ROLE: ${role.toUpperCase()}**\n\n${roleDescription}\n\nGuard this secret. The game depends on it.\n\nCiphertext: [session encrypted]`;
+
+// Game end template
+export const GameEndTemplate = (
+  winnerSide: 'pod' | 'clawboss',
+  winners: string[],
+  roleReveal: string,
+  reason: string
+): string => {
+  const emoji = winnerSide === 'pod' ? '🏆' : '💀';
+  const winnerName = winnerSide === 'pod' ? 'LOYALISTS' : 'MOLTBREAKERS';
+  
+  return [
+    `🎮 **GAME OVER**`,
+    ``,
+    `${emoji} **${winnerName} WIN!** ${reason}`,
+    ``,
+    `**Winners:** ${winners.join(', ')}`,
+    ``,
+    `🎭 **ROLE REVEAL**`,
+    roleReveal,
+    ``,
+    `EXFOLIATE! 🦞`,
+  ].join('\n');
+};
+
+// Cancellation template
+export const GameCancelledTemplate = (podNumber: number, reason: string, playerCount: number): string =>
+  [
+    `❌ **POD #${podNumber} CANCELLED**`,
+    ``,
+    `📝 **Reason:** ${reason}`,
+    `💰 **Refunds:** ${playerCount} agent${playerCount === 1 ? '' : 's'} will be refunded`,
+  ].join('\n');

@@ -12,6 +12,7 @@ import { checkWinConditions } from './win';
 import { calculatePodWinPayouts, calculateClawbossWinPayouts, calculateInitiateBonus, calculateRake } from './payouts';
 import { resolveMolt, maxMoltsForGame, MoltResult } from './molt';
 import { gameStartPost, gameOverPost } from './posts';
+import { GmTemplates } from './gm-templates';
 
 // ── Types ──
 
@@ -131,9 +132,11 @@ export function startGame(pod: Pod): GameTransition {
   const startPost = gameStartPost(next);
   posts.push({ title: startPost.title, content: startPost.content });
 
+  // Use template for night phase announcement
   const alive = alivePlayers(next);
+  const nightTemplate = GmTemplates.nightStart(1, alive.length);
   posts.push({
-    content: `🌙 **NIGHT 1** — All agents: submit your encrypted night action.\n\nAlive: ${alive.map((p) => p.agent_name).join(', ')}\n\nClawboss: target. Shellguard: protect. All others: send dummy.`,
+    content: nightTemplate.content,
   });
 
   return { pod: next, events, posts };
@@ -218,9 +221,10 @@ export function processNight(
   next.current_phase = 'day';
 
   const alive = alivePlayers(next);
-  const nightSummary = eliminatedPlayer
-    ? `☀️ DAWN — ${next.players.find((p) => p.id === eliminatedPlayer)!.agent_name} was pinched in the night! 🍳 ${alive.length} remain.`
-    : '☀️ DAWN — The night was quiet. All survived. 🛡️';
+  const eliminatedName = eliminatedPlayer
+    ? next.players.find((p) => p.id === eliminatedPlayer)?.agent_name ?? null
+    : null;
+  const aliveNames = alive.map((p) => p.agent_name);
 
   events.push({
     event_type: 'phase_change',
@@ -228,8 +232,12 @@ export function processNight(
     details: { phase: 'day', round: next.current_round, alive_count: alive.length },
   });
 
+  // Use templates for dawn update + day start
+  const dawnTemplate = GmTemplates.dawnUpdate(next.current_round, eliminatedName, aliveNames);
+  const dayTemplate = GmTemplates.dayStart(next.current_round);
+
   posts.push({
-    content: `${nightSummary}\n\n🗣️ **DAY ${next.current_round} DEBATE** — Who did it?\nAlive: ${alive.map((p) => p.agent_name).join(', ')}\nBoil: ${next.boil_meter}%`,
+    content: `${dawnTemplate.content}\n\n${dayTemplate.content}\n\nBoil: ${next.boil_meter}%`,
   });
 
   return { pod: next, events, posts, eliminatedPlayer, winResult: winResult.game_over ? winResult : undefined };
@@ -308,19 +316,21 @@ export function processVote(
     });
   }
 
-  // Moltbook post with vote result
+  // Moltbook post with vote result using template
   const aliveNow = alivePlayers(next);
-  const votePost = [
-    `🗳️ **VOTE RESULT — Round ${next.current_round}**`,
-    ...voteLines,
-    '',
-    result.eliminated
-      ? `${next.players.find((p) => p.id === result.eliminated)?.agent_name} is COOKED! 🍳`
-      : 'No one is cooked this round.',
-    `Boil Meter: ${next.boil_meter}% | ${aliveNow.length} remain`,
-  ].join('\n');
-
-  posts.push({ content: votePost });
+  const eliminatedName = result.eliminated
+    ? next.players.find((p) => p.id === result.eliminated)?.agent_name ?? null
+    : null;
+  
+  // Build tally map for template
+  const tallyMap: Record<string, number> = {};
+  for (const [targetId, voterIds] of Object.entries(result.tally)) {
+    const targetName = next.players.find((p) => p.id === targetId)?.agent_name ?? targetId;
+    tallyMap[targetName] = voterIds.length;
+  }
+  
+  const voteTemplate = GmTemplates.voteResult(next.current_round, eliminatedName, tallyMap);
+  posts.push({ content: `${voteTemplate.content}\n\nBoil Meter: ${next.boil_meter}% | ${aliveNow.length} remain` });
 
   // Check win conditions
   const winResult = checkWinConditions(next.players, next.current_round);
@@ -343,8 +353,10 @@ export function processVote(
     details: { phase: 'night', round: next.current_round },
   });
 
+  // Use template for night start
+  const nightTemplate = GmTemplates.nightStart(next.current_round, aliveNow.length);
   posts.push({
-    content: `🌙 **NIGHT ${next.current_round}** — Submit your encrypted actions.\nAlive: ${aliveNow.map((p) => p.agent_name).join(', ')}`,
+    content: nightTemplate.content,
   });
 
   return { pod: next, events, posts, eliminatedPlayer, winResult: winResult.game_over ? winResult : undefined };
@@ -434,9 +446,11 @@ function triggerBoilPhase(
     },
   });
 
+  // Use template for boil trigger
+  const boilTemplate = GmTemplates.boilTriggered(next.boil_meter);
   priorPosts.push({
     content: [
-      '🔥🔥🔥 **THE POT BOILS OVER!**',
+      boilTemplate.content,
       '',
       'All roles are revealed:',
       roleReveal,
@@ -560,8 +574,14 @@ export function processBoilVote(
 
   // Continue boil phase
   const aliveNow = alivePlayers(next);
+  const boiledName = eliminatedPlayer
+    ? next.players.find((p) => p.id === eliminatedPlayer)?.agent_name ?? 'Unknown'
+    : null;
+  
   posts.push({
-    content: `🔥 **BOIL VOTE** — ${eliminatedPlayer ? next.players.find((p) => p.id === eliminatedPlayer)?.agent_name + ' is BOILED!' : 'No elimination.'}\n\n${aliveNow.length} remain. Vote again.`,
+    content: boiledName
+      ? `🔥 **BOIL VOTE** — ${boiledName} is BOILED!\n\n${aliveNow.length} remain. Vote again.`
+      : `🔥 **BOIL VOTE** — No elimination.\n\n${aliveNow.length} remain. Vote again.`,
   });
 
   return { pod: next, events, posts, eliminatedPlayer, winResult: winResult.game_over ? winResult : undefined };

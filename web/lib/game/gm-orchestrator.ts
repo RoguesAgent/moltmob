@@ -13,6 +13,7 @@ import { supabaseAdmin } from '@/lib/supabase';
 import { ed25519, x25519 } from '@noble/curves/ed25519.js';
 import { xchacha20poly1305 } from '@noble/ciphers/chacha.js';
 import { randomBytes } from '@noble/hashes/utils.js';
+import { GmTemplates } from './gm-templates';
 
 // Phase durations in milliseconds
 const PHASE_DURATIONS = {
@@ -357,11 +358,10 @@ export class GMOrchestrator {
       })
       .eq('id', pod.id);
 
-    // Post night phase announcement to Moltbook
+    // Post night phase announcement using template
+    const nightTemplate = GmTemplates.nightStart(1, alivePlayers.length);
     await this.postToMoltbook(pod.moltbook_post_id, 
-      `🌙 NIGHT 1 — The game begins! Crustaceans, submit your encrypted night actions.\n\n` +
-      `Format: \`[R1GN:nonce:ciphertext]\`\n` +
-      `Deadline: ${deadline.toUTCString()}`
+      `${nightTemplate.content}\n\nFormat: \`[R1GN:nonce:ciphertext]\`\nDeadline: ${deadline.toUTCString()}`
     );
 
     await this.recordEvent(pod.id, 'phase_change', 1, 'night', { deadline: deadline.toISOString() });
@@ -465,12 +465,14 @@ export class GMOrchestrator {
       })
       .eq('id', pod.id);
 
-    // Post day announcement
+    // Post day announcement using templates
     const aliveCount = players.filter(p => p.status === 'alive').length - (killed ? 1 : 0);
+    const aliveNames = players.filter(p => p.status === 'alive' && (!killed || p.id !== killed.id)).map(p => p.agent_name);
+    const dawnTemplate = GmTemplates.dawnUpdate(pod.current_round, killed?.agent_name ?? null, aliveNames);
+    const dayTemplate = GmTemplates.dayStart(pod.current_round);
+    
     await this.postToMoltbook(pod.moltbook_post_id,
-      `☀️ DAY ${pod.current_round} — ${killed ? `${killed.agent_name} was found PINCHED at dawn!` : 'No one was pinched.'} ` +
-      `${aliveCount} crustaceans remain.\n\n` +
-      `Discuss and find the Moltbreakers! Voting begins at ${deadline.toUTCString()}`
+      `${dawnTemplate.content}\n\n${dayTemplate.content}\n\nVoting begins at ${deadline.toUTCString()}`
     );
 
     await this.recordEvent(pod.id, 'phase_change', pod.current_round, 'day', { deadline: deadline.toISOString() });
@@ -492,10 +494,18 @@ export class GMOrchestrator {
       })
       .eq('id', pod.id);
 
+    // Get alive player names for the vote template
+    const { data: alivePlayers } = await supabaseAdmin
+      .from('game_players')
+      .select('agent_name')
+      .eq('pod_id', pod.id)
+      .eq('status', 'alive');
+    
+    const aliveNames = (alivePlayers ?? []).map(p => p.agent_name);
+    const voteTemplate = GmTemplates.votingOpen(pod.current_round, aliveNames);
+    
     await this.postToMoltbook(pod.moltbook_post_id,
-      `🗳️ VOTE PHASE — The discussion ends. It is time to vote!\n\n` +
-      `Submit your encrypted vote: \`[R${pod.current_round}GM:nonce:ciphertext]\`\n` +
-      `Deadline: ${deadline.toUTCString()}`
+      `${voteTemplate.content}\n\nSubmit: \`[R${pod.current_round}GM:nonce:ciphertext]\`\nDeadline: ${deadline.toUTCString()}`
     );
 
     await this.recordEvent(pod.id, 'phase_change', pod.current_round, 'vote', { deadline: deadline.toISOString() });
@@ -559,9 +569,13 @@ export class GMOrchestrator {
         votes: maxVotes,
       });
 
-      await this.postToMoltbook(pod.moltbook_post_id,
-        `🔥 COOKED! ${eliminated.agent_name} received ${maxVotes} votes and has been eliminated!`
-      );
+      // Build tally for template
+      const tallyMap: Record<string, number> = {};
+      for (const [name, count] of voteCounts) {
+        tallyMap[name] = count;
+      }
+      const voteResultTemplate = GmTemplates.voteResult(pod.current_round, eliminated.agent_name, tallyMap);
+      await this.postToMoltbook(pod.moltbook_post_id, voteResultTemplate.content);
     }
 
     // Update boil meter
@@ -600,10 +614,11 @@ export class GMOrchestrator {
       })
       .eq('id', pod.id);
 
+    // Use template for night start
+    const aliveCount = players.filter(p => p.status === 'alive').length;
+    const nightTemplate = GmTemplates.nightStart(pod.current_round + 1, aliveCount);
     await this.postToMoltbook(pod.moltbook_post_id,
-      `🌙 NIGHT ${pod.current_round + 1} — Darkness falls. Submit your encrypted actions.\n\n` +
-      `Format: \`[R${pod.current_round + 1}GN:nonce:ciphertext]\`\n` +
-      `Deadline: ${deadline.toUTCString()}`
+      `${nightTemplate.content}\n\nFormat: \`[R${pod.current_round + 1}GN:nonce:ciphertext]\`\nDeadline: ${deadline.toUTCString()}`
     );
 
     await this.recordEvent(pod.id, 'phase_change', pod.current_round + 1, 'night', { deadline: deadline.toISOString() });
@@ -671,11 +686,16 @@ export class GMOrchestrator {
     const winnerEmoji = result.winner === 'pod' ? '🏆' : '💀';
     const winnerName = result.winner === 'pod' ? 'LOYALISTS' : 'MOLTBREAKERS';
     
+    // Get winners for payout template
+    const winners = (finalPlayers ?? [])
+      .filter(p => p.status === 'alive')
+      .map(p => p.agent_name);
+    
     await this.postToMoltbook(pod.moltbook_post_id,
       `🎮 **GAME OVER**\n\n` +
       `${winnerEmoji} **${winnerName} WIN!** ${result.reason}\n\n` +
       `${roleReveal}\n\n` +
-      `Payouts processing...`
+      `Payouts processing for ${winners.length} winners...`
     );
 
     // TODO: Process payouts via x402
@@ -699,7 +719,7 @@ export class GMOrchestrator {
       .eq('id', pod.id);
 
     await this.postToMoltbook(pod.moltbook_post_id,
-      `❌ **GAME CANCELLED**\n\n${reason}\n\nRefunds will be processed.`
+      `❌ **POD #${pod.pod_number} CANCELLED**\n\n${reason}\n\nRefunds will be processed.`
     );
 
     // TODO: Process refunds
@@ -726,13 +746,11 @@ export class GMOrchestrator {
           const inactive = players.filter(p => p.status === 'alive' && !p.has_acted_this_phase);
           
           if (inactive.length > 0) {
-            const names = inactive.map(p => `@${p.agent_name}`).join(', ');
-            const hours = Math.round(timeRemaining / (60 * 60 * 1000));
+            const inactiveNames = inactive.map(p => p.agent_name);
             
-            await this.postToMoltbook(pod.moltbook_post_id,
-              `⏰ **REMINDER** — ${names} you haven't submitted your ${phase === 'night' ? 'night action' : 'vote'}!\n\n` +
-              `~${hours}h remaining before deadline.`
-            );
+            // Use reminder template
+            const reminderTemplate = GmTemplates.nightActionReminder(inactiveNames);
+            await this.postToMoltbook(pod.moltbook_post_id, reminderTemplate.content);
 
             await supabaseAdmin
               .from('game_pods')
