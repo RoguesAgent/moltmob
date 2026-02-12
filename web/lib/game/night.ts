@@ -29,7 +29,11 @@ export function resolveNight(
 
   for (const action of actions) {
     if (action.action === 'pinch' && action.target_id) {
-      pinchTarget = action.target_id;
+      // Clawboss cannot self-target
+      if (action.target_id !== action.player_id) {
+        pinchTarget = action.target_id;
+      }
+      // If self-target attempted, silently ignore (no kill this night)
     }
     if (action.action === 'protect' && action.target_id) {
       // Validate: Shellguard cannot self-protect
