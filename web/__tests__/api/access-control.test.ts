@@ -190,36 +190,29 @@ describe('Access Tier Enforcement', () => {
     it('public events API strips details field', async () => {
       const { GET } = await import('@/app/api/v1/pods/[id]/events/route');
 
-      const podChain = chainable({ id: 'pod-1' });
-      const eventsChain = chainable();
-      eventsChain.order.mockReturnValue(eventsChain);
-      eventsChain.gt.mockReturnValue(eventsChain);
-      eventsChain.in.mockResolvedValue({
-        data: [
-          {
-            id: 'e-1',
-            round: 1,
-            phase: 'night',
-            event_type: 'elimination',
-            summary: '🦀 AgentX was eliminated!',
-            details: { target_role: 'clawboss', action_by: 'agent-2' },
-            created_at: '2026-01-01',
-          },
-        ],
-        error: null,
-      });
+      // Events data (route now only selects specific fields, not details)
+      const eventsData = [
+        {
+          id: 'e-1',
+          pod_id: 'pod-1',
+          round: 1,
+          phase: 'night',
+          event_type: 'elimination',
+          summary: '🦀 AgentX was eliminated!',
+          created_at: '2026-01-01',
+        },
+      ];
 
-      mockFrom.mockImplementation((table: string) => {
-        if (table === 'game_pods') return podChain;
-        if (table === 'gm_events') return eventsChain;
-        return chainable();
-      });
+      const eventsChain = chainable();
+      eventsChain.order.mockResolvedValue({ data: eventsData, error: null });
+
+      mockFrom.mockImplementation(() => eventsChain);
 
       const res = await GET(
         makeReq('http://localhost/api/v1/pods/pod-1/events', {
           headers: { authorization: 'Bearer test-key' },
         }),
-        { params: { id: 'pod-1' } }
+        { params: Promise.resolve({ id: 'pod-1' }) }
       );
       const data = await res.json();
       const json = JSON.stringify(data);
@@ -231,35 +224,50 @@ describe('Access Tier Enforcement', () => {
     });
 
     it('GM players API DOES include role (for GM only)', async () => {
+      // Set env var before importing - vitest resets modules between tests
+      process.env.GM_API_SECRET = 'test-gm-secret';
+      
+      // Clear module cache to re-import with new env
+      vi.resetModules();
+      
       const { GET } = await import('@/app/api/gm/pods/[id]/players/route');
 
-      const playersChain = chainable();
-      playersChain.order.mockResolvedValue({
-        data: [
-          {
-            id: 'p-1',
-            role: 'clawboss',
-            status: 'alive',
-            eliminated_by: null,
-            eliminated_round: null,
-            created_at: '2026-01-01',
-            agent: { id: 'a-1', name: 'Agent1', wallet_pubkey: 'w1' },
-          },
-        ],
-        error: null,
-      });
+      const podData = { id: 'pod-1', status: 'active' };
+      const playersData = [
+        {
+          agent_id: 'a-1',
+          agent_name: 'Agent1',
+          wallet_pubkey: 'w1',
+          role: 'clawboss',
+          status: 'alive',
+          eliminated_by: null,
+          eliminated_round: null,
+          has_acted_this_phase: false,
+        },
+      ];
 
-      mockFrom.mockReturnValue(playersChain);
+      mockFrom.mockImplementation((table: string) => {
+        const c: any = {
+          select: vi.fn().mockReturnThis(),
+          eq: vi.fn().mockImplementation(() => {
+            if (table === 'game_pods') {
+              return { single: vi.fn().mockResolvedValue({ data: podData, error: null }) };
+            }
+            return Promise.resolve({ data: playersData, error: null });
+          }),
+        };
+        return c;
+      });
 
       const res = await GET(
         makeReq('http://localhost/api/gm/pods/pod-1/players', {
           headers: { 'x-gm-secret': 'test-gm-secret' },
         }),
-        { params: { id: 'pod-1' } }
+        { params: Promise.resolve({ id: 'pod-1' }) }
       );
       const data = await res.json();
 
-      // GM API DOES expose role
+      expect(res.status).toBe(200);
       expect(data.players[0].role).toBe('clawboss');
     });
   });

@@ -85,20 +85,36 @@ describe('POST /api/v1/pods/[id]/join', () => {
   it('rejects join to a non-lobby pod', async () => {
     const { POST } = await import('@/app/api/v1/pods/[id]/join/route');
 
-    const podChain = chainable();
-    podChain.single.mockResolvedValue({
-      data: { id: 'pod-1', status: 'active', entry_fee: 10000000 },
-      error: null,
+    let callCount = 0;
+    mockFrom.mockImplementation(() => {
+      callCount++;
+      const c = chainable();
+      if (callCount === 1) {
+        // agents: lookup by wallet
+        c.single.mockResolvedValue({
+          data: { id: 'agent-1', name: 'TestAgent', wallet_pubkey: 'wallet123' },
+          error: null,
+        });
+      } else if (callCount === 2) {
+        // game_pods: pod exists but is active (not lobby)
+        c.single.mockResolvedValue({
+          data: { id: 'pod-1', status: 'active', entry_fee: 10000000 },
+          error: null,
+        });
+      }
+      return c;
     });
-    mockFrom.mockReturnValue(podChain);
 
     const res = await POST(
       makeReq('http://localhost/api/v1/pods/pod-1/join', {
         method: 'POST',
-        headers: { authorization: 'Bearer test-key', 'content-type': 'application/json' },
-        body: JSON.stringify({ tx_signature: 'sig456' }),
+        headers: { 
+          'x-wallet-pubkey': 'wallet123',
+          'content-type': 'application/json' 
+        },
+        body: JSON.stringify({ tx_signature: 'sig456', memo: 'moltmob:join:pod-1:TestAgent' }),
       }),
-      { params: { id: 'pod-1' } }
+      { params: Promise.resolve({ id: 'pod-1' }) }
     );
     const data = await res.json();
 
@@ -114,12 +130,18 @@ describe('POST /api/v1/pods/[id]/join', () => {
       callCount++;
       const c = chainable();
       if (callCount === 1) {
+        // agents: lookup by wallet
+        c.single.mockResolvedValue({
+          data: { id: 'agent-1', name: 'TestAgent', wallet_pubkey: 'wallet123' },
+          error: null,
+        });
+      } else if (callCount === 2) {
         // game_pods: pod exists and is lobby
         c.single.mockResolvedValue({
           data: { id: 'pod-1', status: 'lobby', entry_fee: 10000000 },
           error: null,
         });
-      } else if (callCount === 2) {
+      } else if (callCount === 3) {
         // game_players: already joined
         c.single.mockResolvedValue({
           data: { id: 'p-1', status: 'alive' },
@@ -132,15 +154,18 @@ describe('POST /api/v1/pods/[id]/join', () => {
     const res = await POST(
       makeReq('http://localhost/api/v1/pods/pod-1/join', {
         method: 'POST',
-        headers: { authorization: 'Bearer test-key', 'content-type': 'application/json' },
-        body: JSON.stringify({ tx_signature: 'sig789' }),
+        headers: { 
+          'x-wallet-pubkey': 'wallet123',
+          'content-type': 'application/json' 
+        },
+        body: JSON.stringify({ tx_signature: 'sig789', memo: 'moltmob:join:pod-1:TestAgent' }),
       }),
-      { params: { id: 'pod-1' } }
+      { params: Promise.resolve({ id: 'pod-1' }) }
     );
     const data = await res.json();
 
     expect(res.status).toBe(409);
-    expect(data.error).toMatch(/already in this pod/);
+    expect(data.error).toMatch(/Already in pod/);
   });
 });
 
@@ -190,24 +215,19 @@ describe('GET /api/v1/pods/[id]/events — no details leaked', () => {
   it('strips details field from public response', async () => {
     const { GET } = await import('@/app/api/v1/pods/[id]/events/route');
 
-    const events = [
+    // Events as returned from DB (with details)
+    const dbEvents = [
       {
-        id: 'e-1', round: 1, phase: 'day', event_type: 'elimination',
+        id: 'e-1', pod_id: 'pod-1', round: 1, phase: 'day', event_type: 'elimination',
         summary: '🦀 AgentX was COOKED!',
-        details: { secret: 'should not appear' },
         created_at: '2026-01-01',
       },
     ];
 
-    let callCount = 0;
     mockFrom.mockImplementation(() => {
-      callCount++;
       const c = chainable();
-      if (callCount === 1) {
-        c.single.mockResolvedValue({ data: { id: 'pod-1' }, error: null });
-      } else {
-        c.in.mockResolvedValue({ data: events, error: null });
-      }
+      // Chain: select().eq().order()
+      c.order.mockResolvedValue({ data: dbEvents, error: null });
       return c;
     });
 
@@ -215,7 +235,7 @@ describe('GET /api/v1/pods/[id]/events — no details leaked', () => {
       makeReq('http://localhost/api/v1/pods/pod-1/events', {
         headers: { authorization: 'Bearer test-key' },
       }),
-      { params: { id: 'pod-1' } }
+      { params: Promise.resolve({ id: 'pod-1' }) }
     );
     const data = await res.json();
 

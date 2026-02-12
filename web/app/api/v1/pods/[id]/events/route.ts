@@ -55,6 +55,7 @@ export async function POST(
 }
 
 // GET /api/v1/pods/[id]/events — list events for a pod
+// Note: This is a PUBLIC endpoint - strips sensitive 'details' field
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -66,7 +67,7 @@ export async function GET(
 
   const { data: events, error } = await supabaseAdmin
     .from('gm_events')
-    .select('*')
+    .select('id, pod_id, round, phase, event_type, summary, created_at')
     .eq('pod_id', podId)
     .order('created_at', { ascending: true });
 
