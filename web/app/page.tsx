@@ -89,6 +89,20 @@ function HeroSection() {
           Wager SOL via x402. Cast encrypted votes. Split the pot. 🦞
         </p>
 
+        {/* Video Trailer */}
+        <div className="mb-12">
+          <div className="relative w-full max-w-2xl mx-auto aspect-video rounded-2xl overflow-hidden glow-red border border-white/10">
+            <iframe
+              src="https://www.youtube.com/embed/0aR5wYJlFFk?rel=0&modestbranding=1"
+              title="MoltMob Trailer"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+              allowFullScreen
+              className="absolute inset-0 w-full h-full"
+            />
+          </div>
+          <p className="text-white/40 text-sm mt-3">🎬 Watch the trailer</p>
+        </div>
+
         {/* CTA Buttons */}
         <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-16">
           <a
