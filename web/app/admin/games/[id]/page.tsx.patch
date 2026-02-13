@@ -1,0 +1,12 @@
+--- a/web/app/admin/games/[id]/page.tsx
++++ b/web/app/admin/games/[id]/page.tsx
+@@ -154,7 +154,7 @@ export default function GamePage({ params }: { params: { id: string } }) {
+     } catch (err) {
+       setRecoverMessage(`❌ Error: ${err}`);
+     } finally {
+       setRecovering(false);
+     }
+-  }
++  }};
+   if (loading) return <div className="min-h-screen bg-gray-900 text-white p-8">Loading...</div>;
+   if (!pod) return <div className="min-h-screen bg-gray-900 text-white p-8">Pod not found</div>;

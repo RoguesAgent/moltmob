@@ -269,12 +269,11 @@ export default function GameDetailPage() {
             )}
           </div>
         </div>
+      )}
 
-    {activeTab === 'control' && (
+      {activeTab === 'control' && (
       <ControlPanel podId={id as string} pod={pod} onRecover={() => router.refresh()} />
     )}
-
-      )}
 
       {activeTab === 'players' && (
         <div className="bg-gray-800 rounded-lg overflow-hidden">
